@@ -114,8 +114,15 @@ struct GrowingTextView: NSViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: BlockTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0,
-              let container = tv.textContainer, let lm = tv.layoutManager else { return nil }
-        container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+              let content = tv.textStorage else { return nil }
+        // Se mide sobre una copia: SwiftUI propone anchos de prueba y cambiar el contenedor de la
+        // propia vista la dejaba con un ancho viejo (texto estrecho y alturas que se solapan).
+        let storage = NSTextStorage(attributedString: content)
+        let lm = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        lm.addTextContainer(container)
+        storage.addLayoutManager(lm)
         lm.ensureLayout(for: container)
         var height = lm.usedRect(for: container).height
         if tv.string.isEmpty || tv.string.hasSuffix("\n") {

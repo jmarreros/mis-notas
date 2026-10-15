@@ -12,9 +12,8 @@ struct EditorView: View {
                 if note.isTrashed { trashBanner(note) }
                 ScrollView {
                     NoteBody(note: note)
-                        .frame(maxWidth: 720)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 48).padding(.top, 32).padding(.bottom, 64)
-                        .frame(maxWidth: .infinity)
                 }
                 .scrollIndicators(.automatic)
                 footer(note)
@@ -43,7 +42,7 @@ struct EditorView: View {
             IconButton(systemName: "underline", help: "Subrayado  ⌘U") { Formatting.send(#selector(BlockTextView.mnToggleUnderline(_:))) }
             IconButton(systemName: "textformat.size", help: "Encabezado  ⌥⌘H") { state.toggleHeading() }
             Rectangle().fill(Theme.fieldBorder).frame(width: 1, height: 18).padding(.horizontal, 6)
-            IconButton(systemName: "checklist", help: "Lista de tareas  ⌥⌘T") { BlockActions.addTodo(state) }
+            IconButton(systemName: "list.bullet", help: "Lista  ⌥⌘L") { BlockActions.addTodo(state) }
             IconButton(systemName: "chevron.left.forwardslash.chevron.right", help: "Bloque de código  ⌥⌘C", size: 12) { BlockActions.addCode(state) }
             IconButton(systemName: "link", help: "Enlace  ⌥⌘K") { BlockActions.addLink(state) }
             IconButton(systemName: "photo", help: "Imagen") { BlockActions.addImage(state) }

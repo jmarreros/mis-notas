@@ -68,7 +68,7 @@ struct AppCommands: Commands {
             Button("Subrayado") { Formatting.send(#selector(BlockTextView.mnToggleUnderline(_:))) }.keyboardShortcut("u")
             Divider()
             Button("Encabezado") { state.toggleHeading() }.keyboardShortcut("h", modifiers: [.command, .option])
-            Button("Lista de tareas") { BlockActions.addTodo(state) }.keyboardShortcut("t", modifiers: [.command, .option])
+            Button("Lista") { BlockActions.addTodo(state) }.keyboardShortcut("l", modifiers: [.command, .option])
             Button("Bloque de código") { BlockActions.addCode(state) }.keyboardShortcut("c", modifiers: [.command, .option])
             Button("Enlace") { BlockActions.addLink(state) }.keyboardShortcut("k", modifiers: [.command, .option])
             Button("Imagen…") { BlockActions.addImage(state) }

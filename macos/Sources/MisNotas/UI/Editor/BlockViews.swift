@@ -67,6 +67,7 @@ private extension View {
     }
 }
 
+/// Lista simple con viñetas. Se guarda como bloque `todo` (sin usar `done`) para no cambiar la API.
 struct TodoBlockView: View {
     @Environment(AppState.self) private var state
     let note: Note
@@ -78,13 +79,11 @@ struct TodoBlockView: View {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                 let key = "todo:\(block.id):\(i)"
                 let (focus, onFocused) = blockFocus(state, note: note, block: block, key: key)
-                HStack(spacing: 11) {
-                    GradientCheckbox(checked: item.done)
-                        .contentShape(Rectangle())
-                        .onTapGesture { update { $0[i].done.toggle() } }
-                    KeyTextField(text: item.t, placeholder: "Tarea", font: Theme.nsBody(16),
-                                 color: item.done ? NSColor(hex: 0x777777) : NSColor(hex: 0xE6E6E6),
-                                 strikethrough: item.done, focus: focus, onFocused: onFocused,
+                HStack(spacing: 10) {
+                    Circle().fill(Color(nsColor: NSColor(hex: 0xE6E6E6))).frame(width: 5, height: 5)
+                        .padding(.leading, 6)
+                    KeyTextField(text: item.t, placeholder: "Elemento", font: Theme.nsBody(16),
+                                 color: NSColor(hex: 0xE6E6E6), focus: focus, onFocused: onFocused,
                                  onChange: { v in update { $0[i].t = v } },
                                  onSubmit: {
                                      update { $0.insert(TodoItem(t: ""), at: i + 1) }

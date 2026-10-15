@@ -18,6 +18,11 @@ struct KeyTextField: NSViewRepresentable {
     var onEndEditing: (() -> Void)?
 
     final class Field: NSTextField {
+        override class var cellClass: AnyClass? {
+            get { Cell.self }
+            set {}
+        }
+
         var onBecomeFirstResponder: (() -> Void)?
         override func becomeFirstResponder() -> Bool {
             let ok = super.becomeFirstResponder()
@@ -26,6 +31,28 @@ struct KeyTextField: NSViewRepresentable {
                 onBecomeFirstResponder?()
             }
             return ok
+        }
+    }
+
+    /// `NSTextFieldCell` coloca la línea base de Barlow Condensed más arriba que el editor de texto y
+    /// recorta la parte superior del texto y del placeholder. Se dibuja con el sistema de texto, igual
+    /// que el editor, para que coincidan.
+    /// El placeholder se guarda aquí y no en `placeholderAttributedString`: si no, el editor de campo
+    /// dibuja también el suyo, desplazado, mientras se edita.
+    final class Cell: NSTextFieldCell {
+        var placeholder: NSAttributedString?
+
+        override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+            let editor = (controlView as? NSTextField)?.currentEditor()
+            let isEmpty = editor.map { $0.string.isEmpty } ?? stringValue.isEmpty
+            if editor != nil && !isEmpty { return } // el editor dibuja el texto
+            let source = isEmpty ? (placeholder ?? NSAttributedString()) : attributedStringValue
+            guard source.length > 0 else { return }
+            let s = NSMutableAttributedString(attributedString: source)
+            let style = NSMutableParagraphStyle()
+            style.lineBreakMode = .byTruncatingTail
+            s.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: s.length))
+            s.draw(with: titleRect(forBounds: cellFrame), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }
 
@@ -57,7 +84,7 @@ struct KeyTextField: NSViewRepresentable {
         f.isEditable = context.environment.isEnabled
         f.font = font
         f.textColor = color
-        f.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
+        (f.cell as? Cell)?.placeholder = NSAttributedString(string: placeholder, attributes: [
             .font: font, .foregroundColor: NSColor(hex: 0x666666),
         ])
         let editing = f.currentEditor() != nil
@@ -94,6 +121,7 @@ struct KeyTextField: NSViewRepresentable {
 
         func controlTextDidChange(_ obj: Notification) {
             guard let f = obj.object as? NSTextField else { return }
+            f.needsDisplay = true // muestra u oculta el placeholder que dibuja `Cell`
             parent.onChange(f.stringValue)
         }
 
