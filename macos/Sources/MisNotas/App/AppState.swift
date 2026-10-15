@@ -479,7 +479,7 @@ final class AppState {
         perform {
             try FileManager.default.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: url, to: attachmentsDirectory.appendingPathComponent(fileName))
-            let mime = ext == "jpg" ? "image/jpeg" : "image/\(ext)"
+            let mime = ["jpg": "image/jpeg", "svg": "image/svg+xml"][ext] ?? "image/\(ext)"
             try repo.insert(Attachment(id: id, noteId: selectedId, fileName: fileName, mime: mime, uploaded: false))
             insertBlock(.image(attachmentId: id), focusKey: "caption:" + id)
         }

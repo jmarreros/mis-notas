@@ -16,7 +16,7 @@ class AttachmentController extends Controller
         $data = $request->validate([
             'id' => ['required', 'uuid'],
             'note_id' => ['nullable', 'uuid'],
-            'file' => ['required', 'file', 'image', 'max:20480'],
+            'file' => ['required', 'file', 'image:allow_svg', 'max:20480'],
         ]);
 
         $existing = Attachment::find($data['id']);

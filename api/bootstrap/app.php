@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Los bloques guardan cadenas vacías (`html`, `t`); convertirlas en null rompe al cliente.
+        $middleware->convertEmptyStringsToNull(except: [
+            fn (Request $request) => $request->is('api/sync'),
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

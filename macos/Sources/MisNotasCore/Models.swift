@@ -19,6 +19,15 @@ public struct TodoItem: Codable, Equatable, Hashable {
         self.t = t
         self.done = done
     }
+
+    enum CodingKeys: String, CodingKey { case t, done }
+
+    /// Tolerante: registros antiguos del servidor guardaron las cadenas vacías como null.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        t = try c.decodeIfPresent(String.self, forKey: .t) ?? ""
+        done = try c.decodeIfPresent(Bool.self, forKey: .done) ?? false
+    }
 }
 
 /// Un bloque de contenido. Estructura plana con campos opcionales según el tipo,
