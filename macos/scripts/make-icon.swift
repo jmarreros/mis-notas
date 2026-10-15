@@ -26,10 +26,25 @@ func render(_ px: Int) -> Data {
     ctx.scaleBy(x: unit, y: unit)
 
     ctx.setShadow(offset: CGSize(width: 0, height: -1.2), blur: 3, color: CGColor(gray: 0, alpha: 0.3))
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 2, y: 2, width: 96, height: 96), cornerWidth: 22, cornerHeight: 22, transform: nil))
+    let tile = CGPath(roundedRect: CGRect(x: 2, y: 2, width: 96, height: 96), cornerWidth: 22, cornerHeight: 22, transform: nil)
+    ctx.addPath(tile)
     ctx.setFillColor(color(0x1F6B45))
-    ctx.fillPath()
+    ctx.fillPath()           // base con sombra
     ctx.setShadow(offset: .zero, blur: 0, color: nil)
+
+    // Degradado verde: más claro arriba, más profundo abajo
+    ctx.saveGState()
+    ctx.addPath(tile); ctx.clip()
+    let green = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                           colors: [color(0x2F9462), color(0x1F6B45), color(0x13472D)] as CFArray,
+                           locations: [0, 0.55, 1])!
+    ctx.drawLinearGradient(green, start: CGPoint(x: 50, y: 2), end: CGPoint(x: 50, y: 98), options: [])
+    // Borde interior de luz
+    ctx.addPath(tile)
+    ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.18))
+    ctx.setLineWidth(1)
+    ctx.strokePath()
+    ctx.restoreGState()
 
     // Hoja: M29 20h31l15 15v43a2 2 0 0 1-2 2H29a2 2 0 0 1-2-2V22a2 2 0 0 1 2-2z
     let page = CGMutablePath()

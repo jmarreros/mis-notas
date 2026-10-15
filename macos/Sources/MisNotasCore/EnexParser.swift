@@ -4,7 +4,6 @@ public struct EnexNote: Equatable {
     public var title: String
     public var created: Millis?
     public var updated: Millis?
-    public var tags: [String]
     public var blocks: [Block]
 }
 
@@ -12,7 +11,7 @@ public struct EnexNote: Equatable {
 /// (imágenes y adjuntos) se descartan.
 public final class EnexParser: NSObject, XMLParserDelegate {
     private var notes: [EnexNote] = []
-    private var current: (title: String, created: String, updated: String, tags: [String], content: String)?
+    private var current: (title: String, created: String, updated: String, content: String)?
     private var element = ""
     private var buffer = ""
     private var depthInResource = 0
@@ -38,7 +37,7 @@ public final class EnexParser: NSObject, XMLParserDelegate {
                        qualifiedName: String?, attributes: [String: String] = [:]) {
         if name == "resource" { depthInResource += 1 }
         guard depthInResource == 0 else { return }
-        if name == "note" { current = ("", "", "", [], "") }
+        if name == "note" { current = ("", "", "", "") }
         element = name
         buffer = ""
     }
@@ -61,12 +60,11 @@ public final class EnexParser: NSObject, XMLParserDelegate {
         case "title" where element == "title": current?.title = text
         case "created": current?.created = text
         case "updated": current?.updated = text
-        case "tag": if !text.isEmpty { current?.tags.append(text) }
         case "content": current?.content = buffer
         case "note":
             if let c = current {
                 notes.append(EnexNote(title: c.title, created: Self.date(c.created), updated: Self.date(c.updated),
-                                      tags: c.tags, blocks: ENMLConverter.blocks(from: c.content)))
+                                      blocks: ENMLConverter.blocks(from: c.content)))
             }
             current = nil
         default: break

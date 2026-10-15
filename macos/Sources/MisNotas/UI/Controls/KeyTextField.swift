@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// `NSTextField` de una línea con control de Intro, Retroceso en vacío y Esc, que SwiftUI
-/// no ofrece de forma fiable en macOS. Se usa en el título, las tareas, las etiquetas y los enlaces.
+/// no ofrece de forma fiable en macOS. Se usa en el título, las tareas y los enlaces.
 struct KeyTextField: NSViewRepresentable {
     var text: String
     var placeholder = ""

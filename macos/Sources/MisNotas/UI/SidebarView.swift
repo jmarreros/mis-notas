@@ -7,9 +7,11 @@ struct SidebarView: View {
     @State private var creatingNotebook = false
     @State private var newNotebookName = ""
     @State private var renaming: Notebook?
-    @State private var renamingTag: String?
     @State private var renameText = ""
     @State private var deleting: Notebook?
+
+    /// Distingue una libreta arrastrada de una nota (ambas viajan como texto).
+    private static let notebookPrefix = "libreta:"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,28 +40,20 @@ struct SidebarView: View {
                                    active: isActive(.notebook(nb.id))) {
                                 state.select(nav: .notebook(nb.id))
                             }
+                            .draggable(Self.notebookPrefix + nb.id)
                             .dropDestination(for: String.self) { ids, _ in
-                                ids.forEach { state.move($0, to: nb.id) }
+                                for id in ids {
+                                    if id.hasPrefix(Self.notebookPrefix) {
+                                        state.moveNotebook(String(id.dropFirst(Self.notebookPrefix.count)), onto: nb.id)
+                                    } else {
+                                        state.move(id, to: nb.id)
+                                    }
+                                }
                                 return !ids.isEmpty
                             }
                             .contextMenu {
                                 Button("Renombrar…") { renameText = nb.name; renaming = nb }
                                 Button("Eliminar…", role: .destructive) { deleting = nb }
-                            }
-                        }
-                    }
-
-                    let tags = state.tagCounts
-                    if !tags.isEmpty {
-                        section("ETIQUETAS") {
-                            ForEach(tags, id: \.name) { tag in
-                                NavRow(icon: "number", title: tag.name, count: tag.count, active: isActive(.tag(tag.name))) {
-                                    state.select(nav: .tag(tag.name))
-                                }
-                                .contextMenu {
-                                    Button("Renombrar…") { renameText = tag.name; renamingTag = tag.name }
-                                    Button("Quitar de todas las notas", role: .destructive) { state.renameTag(tag.name, to: nil) }
-                                }
                             }
                         }
                     }
@@ -104,11 +98,6 @@ struct SidebarView: View {
         .alert("Renombrar libreta", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Nombre", text: $renameText)
             Button("Renombrar") { if let nb = renaming { state.rename(nb, to: renameText) } }
-            Button("Cancelar", role: .cancel) {}
-        }
-        .alert("Renombrar etiqueta", isPresented: Binding(get: { renamingTag != nil }, set: { if !$0 { renamingTag = nil } })) {
-            TextField("Nombre", text: $renameText)
-            Button("Renombrar") { if let t = renamingTag { state.renameTag(t, to: renameText) } }
             Button("Cancelar", role: .cancel) {}
         }
         .alert("¿Eliminar la libreta «\(deleting?.name ?? "")»?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {

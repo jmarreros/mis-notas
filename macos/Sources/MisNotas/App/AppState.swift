@@ -5,7 +5,6 @@ import Observation
 enum Nav: Hashable {
     case all
     case notebook(String)
-    case tag(String)
     case trash
 }
 
@@ -88,19 +87,11 @@ final class AppState {
 
     func count(in notebook: Notebook) -> Int { liveNotes.filter { $0.notebookId == notebook.id }.count }
 
-    var tagCounts: [(name: String, count: Int)] {
-        var counts: [String: Int] = [:]
-        for n in liveNotes { for t in n.tags { counts[t, default: 0] += 1 } }
-        return counts.map { ($0.key, $0.value) }
-            .sorted { $0.name.compare($1.name, locale: Locale(identifier: "es")) == .orderedAscending }
-    }
-
     func matches(_ note: Note, _ nav: Nav) -> Bool {
         if case .trash = nav { return note.isTrashed }
         if note.isTrashed { return false }
         switch nav {
         case let .notebook(id): return note.notebookId == id
-        case let .tag(t): return note.tags.contains(t)
         default: return true
         }
     }
@@ -119,7 +110,6 @@ final class AppState {
         switch nav {
         case .all: return "Todas las notas"
         case let .notebook(id): return notebookName(id)
-        case let .tag(t): return "#" + t
         case .trash: return "Papelera"
         }
     }
@@ -178,9 +168,7 @@ final class AppState {
                 notebooks = [nb]
                 notebookId = nb.id
             }
-            var tags: [String] = []
-            if case let .tag(t) = nav { tags = [t] }
-            let note = try repo.save(Note(notebookId: notebookId, tags: tags))
+            let note = try repo.save(Note(notebookId: notebookId))
             notes.insert(note, at: 0)
             if case .trash = nav { nav = .all }
             query = ""
@@ -233,25 +221,30 @@ final class AppState {
         onLocalChange()
     }
 
-    func addTag(_ raw: String, to id: String) {
-        let t = Note.normalizeTag(raw)
-        guard !t.isEmpty else { return }
-        update(id) { n in if !n.tags.contains(t) { n.tags.append(t) } }
-    }
-
-    func removeTag(_ t: String, from id: String) {
-        update(id) { $0.tags.removeAll { $0 == t } }
-    }
-
     // MARK: Bloques
 
     /// Inserta un bloque detrás del bloque activo (o al final) y le da el foco.
     func insertBlock(_ block: Block, focusKey: String) {
         guard let id = selectedId else { return }
         registerUndo(id, name: "Insertar bloque")
+        // Si el cursor está dentro de un texto, el bloque entra justo ahí y el resto del texto pasa a un párrafo nuevo.
+        var split: (before: String, after: String)?
+        if let active = activeBlockId, notes.first(where: { $0.id == id })?.blocks.first(where: { $0.id == active })?.isText == true,
+           let tv = NSApp.keyWindow?.firstResponder as? BlockTextView {
+            split = tv.splitAtCaret()
+        }
         update(id) { n in
             var at = n.blocks.endIndex
             if let active = activeBlockId, let i = n.blocks.firstIndex(where: { $0.id == active }) {
+                if let split, !InlineHTML.plainText(split.before).isEmpty || !InlineHTML.plainText(split.after).isEmpty {
+                    let hasBefore = !InlineHTML.plainText(split.before).isEmpty
+                    if hasBefore { n.blocks[i].html = split.before } else { n.blocks.remove(at: i) }
+                    at = hasBefore ? i + 1 : i
+                    n.blocks.insert(block, at: at)
+                    if !InlineHTML.plainText(split.after).isEmpty { n.blocks.insert(.paragraph(split.after), at: at + 1) }
+                    Self.ensureTrailingParagraph(&n)
+                    return
+                }
                 // Un párrafo vacío activo se sustituye por el bloque nuevo.
                 if n.blocks[i].isText, InlineHTML.plainText(n.blocks[i].html ?? "").isEmpty, n.blocks.count > 1 || block.isText {
                     n.blocks.remove(at: i)
@@ -498,7 +491,7 @@ final class AppState {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    // MARK: Libretas y etiquetas
+    // MARK: Libretas
 
     @discardableResult
     func createNotebook(named name: String) -> Notebook? {
@@ -507,7 +500,7 @@ final class AppState {
         if let existing = notebooks.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { return existing }
         var created: Notebook?
         perform {
-            created = try repo.save(Notebook(name: trimmed))
+            created = try repo.save(Notebook(name: trimmed, sort: notebooks.count))
             notebooks = try repo.notebooks()
         }
         onLocalChange()
@@ -526,6 +519,19 @@ final class AppState {
         onLocalChange()
     }
 
+    /// Coloca `id` en la posición que ocupa `target` (arrastrar y soltar en la barra lateral).
+    func moveNotebook(_ id: String, onto target: String) {
+        guard id != target, let from = notebooks.firstIndex(where: { $0.id == id }),
+              let to = notebooks.firstIndex(where: { $0.id == target }) else { return }
+        var order = notebooks
+        order.insert(order.remove(at: from), at: to)
+        perform {
+            try repo.reorderNotebooks(order.map(\.id))
+            notebooks = try repo.notebooks()
+        }
+        onLocalChange()
+    }
+
     func delete(_ notebook: Notebook) {
         perform { try repo.delete(notebook) }
         if nav == .notebook(notebook.id) { nav = .all }
@@ -537,10 +543,4 @@ final class AppState {
         update(noteId) { $0.notebookId = notebookId }
     }
 
-    func renameTag(_ tag: String, to newName: String?) {
-        perform { try repo.renameTag(tag, to: newName) }
-        if nav == .tag(tag) { nav = newName.map { .tag(Note.normalizeTag($0)) } ?? .all }
-        reload()
-        onLocalChange()
-    }
 }

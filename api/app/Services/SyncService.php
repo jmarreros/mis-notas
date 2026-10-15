@@ -66,7 +66,6 @@ class SyncService
                     'notebook_id' => $data['notebook_id'] ?? null,
                     'title' => $data['title'] ?? '',
                     'blocks' => $data['blocks'] ?? [],
-                    'tags' => $this->normalizeTags($data['tags'] ?? []),
                     'created_at' => $data['created_at'],
                     'updated_at' => $data['updated_at'],
                     'trashed_at' => $data['trashed_at'] ?? null,
@@ -110,13 +109,5 @@ class SyncService
         $model->save();
 
         return null;
-    }
-
-    /** @return list<string> */
-    private function normalizeTags(array $tags): array
-    {
-        $clean = array_map(fn ($t) => ltrim(mb_strtolower(trim((string) $t)), '#'), $tags);
-
-        return array_values(array_unique(array_filter($clean, fn ($t) => $t !== '')));
     }
 }

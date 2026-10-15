@@ -54,7 +54,7 @@ class SyncTest extends TestCase
             ->assertJsonPath('notebooks.0.name', 'Viajes')
             ->assertJsonPath('notes.0.blocks.0.html', 'Reservar el <b>ryokan</b>')
             ->assertJsonPath('notes.0.blocks.1.items.0.done', true)
-            ->assertJsonPath('notes.0.tags', ['japón', 'pendiente'])
+            ->assertJsonMissingPath('notes.0.tags')
             ->assertJsonMissingPath('notes.0.user_id');
 
         $this->getJson('/api/sync?since=2')->assertJson(['rev' => 2, 'notes' => [], 'notebooks' => []]);

@@ -19,7 +19,6 @@ struct ImportView: View {
     @State private var stage = Stage.pick
     @State private var files: [ParsedFile] = []
     @State private var failures: [String] = []
-    @State private var keepTags = true
     @State private var perFile = false
     @State private var progress = 0.0
     @State private var summary = ""
@@ -98,7 +97,6 @@ struct ImportView: View {
             }
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.fieldBorder))
             VStack(alignment: .leading, spacing: 10) {
-                option("Conservar etiquetas de Evernote", $keepTags)
                 option("Crear una libreta por archivo", $perFile)
             }
         }
@@ -213,7 +211,6 @@ struct ImportView: View {
                         var blocks = e.blocks
                         if blocks.last?.type != .p { blocks.append(.paragraph()) }
                         return Note(notebookId: nb.id, title: e.title, blocks: blocks,
-                                    tags: keepTags ? Array(NSOrderedSet(array: e.tags.map(Note.normalizeTag).filter { !$0.isEmpty })) as! [String] : [],
                                     createdAt: created, updatedAt: e.updated ?? created)
                     }
                     do { try state.repo.insert(notes: notes, notebooks: []) } catch { state.errorMessage = error.localizedDescription; return }

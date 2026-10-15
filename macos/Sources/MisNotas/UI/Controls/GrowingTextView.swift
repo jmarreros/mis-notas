@@ -260,6 +260,33 @@ final class BlockTextView: NSTextView {
         super.insertNewline(sender)
     }
 
+    /// Parte el texto por el cursor (o la selección) para insertar un bloque en medio. Quita los saltos de
+    /// línea pegados al corte y suelta el foco para que el bloque recargue su contenido. Solo en texto enriquecido.
+    func splitAtCaret() -> (before: String, after: String)? {
+        guard isRich else { return nil }
+        let text = string as NSString
+        let sel = selectedRange()
+        var end = sel.location
+        while end > 0, text.character(at: end - 1) == 0x0A { end -= 1 }
+        var start = NSMaxRange(sel)
+        while start < text.length, text.character(at: start) == 0x0A { start += 1 }
+        let full = attributedString()
+        let before = InlineHTML.html(from: full.attributedSubstring(from: NSRange(location: 0, length: end)))
+        let after = InlineHTML.html(from: full.attributedSubstring(from: NSRange(location: start, length: text.length - start)))
+        window?.makeFirstResponder(nil)
+        return (before, after)
+    }
+
+    /// El interlineado se suma a la altura de la línea y alargaba el cursor: se ajusta a la altura de la letra.
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        var r = rect
+        if let font = typingAttributes[.font] as? NSFont {
+            let height = ceil(font.ascender - font.descender)
+            if height < r.height { r.size.height = height }
+        }
+        super.drawInsertionPoint(in: r, color: color, turnedOn: flag)
+    }
+
     override func didChangeText() {
         super.didChangeText()
         needsDisplay = true
@@ -270,6 +297,64 @@ final class BlockTextView: NSTextView {
     @objc func mnToggleBold(_ sender: Any?) { toggle(InlineHTML.bold) }
     @objc func mnToggleItalic(_ sender: Any?) { toggle(InlineHTML.italic) }
     @objc func mnToggleUnderline(_ sender: Any?) { toggle(.underlineStyle) }
+
+    /// Enlace dentro del texto: convierte la selección en enlace (o edita el enlace bajo el cursor).
+    /// Con una dirección vacía quita el enlace.
+    @objc func mnLink(_ sender: Any?) {
+        guard isRich, let storage = textStorage, window != nil else { return }
+        var range = selectedRange()
+        var current: String?
+        let probe = range.length > 0 ? range.location : max(0, range.location - 1)
+        if storage.length > 0, probe < storage.length {
+            var linkRange = NSRange()
+            if let value = storage.attribute(.link, at: probe, longestEffectiveRange: &linkRange,
+                                             in: NSRange(location: 0, length: storage.length)) {
+                current = (value as? URL)?.absoluteString ?? value as? String
+                if range.length == 0 { range = linkRange }
+            }
+        }
+        let selectedText = range.length > 0 ? (string as NSString).substring(with: range) : ""
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.placeholderString = "https://…"
+        field.stringValue = current ?? ""
+        let alert = NSAlert()
+        alert.messageText = current == nil ? "Añadir enlace" : "Editar enlace"
+        alert.informativeText = range.length > 0 ? "Dirección para «\(selectedText.prefix(40))»"
+            : "Dirección del enlace (se insertará como texto)"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Aceptar")
+        alert.addButton(withTitle: "Cancelar")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { window?.makeFirstResponder(self); return }
+        window?.makeFirstResponder(self)
+
+        var address = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !address.isEmpty, !address.contains("://"), !address.lowercased().hasPrefix("mailto:") { address = "https://" + address }
+        let url = address.isEmpty ? nil : URL(string: address)
+        if !address.isEmpty, url == nil { NSSound.beep(); return }
+
+        if range.length == 0 {
+            // Sin selección: se inserta la propia dirección como texto del enlace.
+            guard let url else { return }
+            insertText(url.absoluteString, replacementRange: range)
+            range = NSRange(location: range.location, length: (url.absoluteString as NSString).length)
+        }
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+        storage.beginEditing()
+        if let url {
+            storage.addAttribute(.link, value: url, range: range)
+            storage.addAttribute(.foregroundColor, value: GrowingTextView.linkColor, range: range)
+        } else {
+            storage.removeAttribute(.link, range: range)
+            storage.addAttribute(.foregroundColor, value: baseAttributes[.foregroundColor] ?? NSColor.white, range: range)
+        }
+        storage.endEditing()
+        didChangeText()
+        setSelectedRange(NSRange(location: NSMaxRange(range), length: 0))
+        typingAttributes[.link] = nil
+        if let color = baseAttributes[.foregroundColor] { typingAttributes[.foregroundColor] = color }
+    }
 
     private func isOn(_ key: NSAttributedString.Key, _ attrs: [NSAttributedString.Key: Any]) -> Bool {
         if key == .underlineStyle { return ((attrs[key] as? Int) ?? 0) != 0 }
@@ -304,7 +389,7 @@ final class BlockTextView: NSTextView {
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
-        case #selector(mnToggleBold(_:)), #selector(mnToggleItalic(_:)), #selector(mnToggleUnderline(_:)): return isRich
+        case #selector(mnToggleBold(_:)), #selector(mnToggleItalic(_:)), #selector(mnToggleUnderline(_:)), #selector(mnLink(_:)): return isRich
         default: return super.validateUserInterfaceItem(item)
         }
     }

@@ -68,6 +68,9 @@ public final class AppDatabase {
                 t.column("body")
             }
         }
+        m.registerMigration("v2-sin-etiquetas") { db in
+            try db.alter(table: "note") { t in t.drop(column: "tags") }
+        }
         return m
     }
 }

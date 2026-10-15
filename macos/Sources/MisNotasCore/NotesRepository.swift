@@ -63,6 +63,20 @@ public final class NotesRepository {
         return nb
     }
 
+    /// Fija el orden manual de las libretas: `ids` es el orden deseado. Solo toca las que cambian.
+    public func reorderNotebooks(_ ids: [String]) throws {
+        try writer.write { db in
+            let now = Millis.now
+            for (index, id) in ids.enumerated() {
+                guard var nb = try Notebook.fetchOne(db, key: id), nb.deletedAt == nil, nb.sort != index else { continue }
+                nb.sort = index
+                nb.updatedAt = max(now, nb.updatedAt + 1)
+                nb.dirty = true
+                try nb.save(db)
+            }
+        }
+    }
+
     /// Guarda varias notas en una sola transacción (importación). Respeta sus fechas.
     public func insert(notes: [Note], notebooks: [Notebook]) throws {
         try writer.write { db in
@@ -77,7 +91,6 @@ public final class NotesRepository {
         n.deletedAt = .now
         n.blocks = []
         n.title = ""
-        n.tags = []
         try save(n)
     }
 
@@ -96,24 +109,6 @@ public final class NotesRepository {
                 n.updatedAt = max(now, n.updatedAt + 1)
                 n.dirty = true
                 try n.save(db)
-            }
-        }
-    }
-
-    /// Renombra o elimina (`to: nil`) una etiqueta en todas las notas.
-    public func renameTag(_ tag: String, to newName: String?) throws {
-        let target = newName.map(Note.normalizeTag)
-        try writer.write { db in
-            let notes = try Note.filter(Column("deletedAt") == nil).fetchAll(db).filter { $0.tags.contains(tag) }
-            let now = Millis.now
-            for var n in notes {
-                var tags = n.tags.filter { $0 != tag }
-                if let target, !target.isEmpty, !tags.contains(target) { tags.append(target) }
-                n.tags = tags
-                n.updatedAt = max(now, n.updatedAt + 1)
-                n.dirty = true
-                try n.save(db)
-                try Self.index(n, db)
             }
         }
     }
@@ -208,7 +203,7 @@ public final class NotesRepository {
     private static func index(_ n: Note, _ db: Database) throws {
         try db.execute(sql: "DELETE FROM noteSearch WHERE noteId = ?", arguments: [n.id])
         guard n.deletedAt == nil else { return }
-        let body = n.bodyText + " " + n.tags.map { "#" + $0 }.joined(separator: " ")
+        let body = n.bodyText
         try db.execute(sql: "INSERT INTO noteSearch (noteId, title, body) VALUES (?, ?, ?)", arguments: [n.id, n.title, body])
     }
 }

@@ -20,7 +20,6 @@ class Note extends Model
     {
         return [
             'blocks' => 'array',
-            'tags' => 'array',
             'created_at' => 'integer',
             'updated_at' => 'integer',
             'trashed_at' => 'integer',

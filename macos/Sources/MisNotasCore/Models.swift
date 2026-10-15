@@ -36,12 +36,13 @@ public struct Block: Codable, Equatable, Identifiable, Hashable {
     public var url: String?           // link
     public var attachmentId: String?  // img
     public var caption: String?       // img
+    public var width: Double?         // img: ancho en puntos (nil = ajustado al editor)
 
     public init(id: String = newID(), type: Kind, html: String? = nil, items: [TodoItem]? = nil,
                 lang: String? = nil, text: String? = nil, title: String? = nil, url: String? = nil,
-                attachmentId: String? = nil, caption: String? = nil) {
+                attachmentId: String? = nil, caption: String? = nil, width: Double? = nil) {
         self.id = id; self.type = type; self.html = html; self.items = items; self.lang = lang
-        self.text = text; self.title = title; self.url = url; self.attachmentId = attachmentId; self.caption = caption
+        self.text = text; self.title = title; self.url = url; self.attachmentId = attachmentId; self.caption = caption; self.width = width
     }
 
     public static func paragraph(_ html: String = "") -> Block { Block(type: .p, html: html) }
@@ -104,7 +105,6 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
     public var notebookId: String?
     public var title: String
     public var blocks: [Block]
-    public var tags: [String]
     public var createdAt: Millis
     public var updatedAt: Millis
     public var trashedAt: Millis?
@@ -114,15 +114,15 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
     public static let databaseTableName = "note"
 
     public init(id: String = newID(), notebookId: String?, title: String = "", blocks: [Block] = [.paragraph()],
-                tags: [String] = [], createdAt: Millis = .now, updatedAt: Millis = .now,
+                createdAt: Millis = .now, updatedAt: Millis = .now,
                 trashedAt: Millis? = nil, deletedAt: Millis? = nil, dirty: Bool = true) {
-        self.id = id; self.notebookId = notebookId; self.title = title; self.blocks = blocks; self.tags = tags
+        self.id = id; self.notebookId = notebookId; self.title = title; self.blocks = blocks
         self.createdAt = createdAt; self.updatedAt = updatedAt; self.trashedAt = trashedAt
         self.deletedAt = deletedAt; self.dirty = dirty
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, notebookId, title, blocks, tags, createdAt, updatedAt, trashedAt, deletedAt, dirty
+        case id, notebookId, title, blocks, createdAt, updatedAt, trashedAt, deletedAt, dirty
     }
 
     public init(from decoder: Decoder) throws {
@@ -131,7 +131,6 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
         notebookId = try c.decodeIfPresent(String.self, forKey: .notebookId)
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         blocks = try c.decodeIfPresent([Block].self, forKey: .blocks) ?? []
-        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         createdAt = try c.decode(Millis.self, forKey: .createdAt)
         updatedAt = try c.decode(Millis.self, forKey: .updatedAt)
         trashedAt = try c.decodeIfPresent(Millis.self, forKey: .trashedAt)
@@ -151,12 +150,6 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
     }
 
     public var hasImage: Bool { blocks.contains { $0.type == .img } }
-
-    public static func normalizeTag(_ raw: String) -> String {
-        var t = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while t.hasPrefix("#") { t.removeFirst() }
-        return t
-    }
 }
 
 /// Imagen local de una nota. El archivo vive en el directorio de adjuntos con nombre `<id>.<ext>`.

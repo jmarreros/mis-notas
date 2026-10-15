@@ -54,7 +54,7 @@ struct EditorView: View {
             Rectangle().fill(Theme.fieldBorder).frame(width: 1, height: 18).padding(.horizontal, 6)
             IconButton(systemName: "list.bullet", help: "Lista  ⌥⌘L") { BlockActions.addTodo(state) }
             IconButton(systemName: "chevron.left.forwardslash.chevron.right", help: "Bloque de código  ⌥⌘C", size: 12) { BlockActions.addCode(state) }
-            IconButton(systemName: "link", help: "Enlace  ⌥⌘K") { BlockActions.addLink(state) }
+            IconButton(systemName: "link", help: "Enlace  ⌘K") { Formatting.send(#selector(BlockTextView.mnLink(_:))) }
             IconButton(systemName: "photo", help: "Imagen") { BlockActions.addImage(state) }
             Spacer()
             NotebookPicker(note: note)
@@ -123,11 +123,6 @@ enum BlockActions {
         s.insertBlock(b, focusKey: "block:" + b.id)
     }
 
-    static func addLink(_ s: AppState) {
-        let b = Block.link()
-        s.insertBlock(b, focusKey: "url:" + b.id)
-    }
-
     static func addImage(_ s: AppState) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
@@ -164,7 +159,7 @@ struct NotebookPicker: View {
     }
 }
 
-/// Título, etiquetas y bloques.
+/// Título y bloques.
 struct NoteBody: View {
     @Environment(AppState.self) private var state
     let note: Note
@@ -177,8 +172,6 @@ struct NoteBody: View {
                          onSubmit: { focusFirstBlock() },
                          onMoveDown: { focusFirstBlock() })
 
-            TagBar(note: note)
-
             ForEach(note.blocks) { block in
                 BlockView(note: note, block: block)
             }
@@ -190,136 +183,6 @@ struct NoteBody: View {
     private func clearFocus(_ key: String) { if isFocused(key) { state.focus = nil } }
 
     private func focusFirstBlock() { state.moveFocus(from: nil, up: false, in: note.id) }
-}
-
-struct TagBar: View {
-    @Environment(AppState.self) private var state
-    let note: Note
-    @State private var editing = false
-    @State private var draft = ""
-
-    var body: some View {
-        let suggestions = editing && !draft.isEmpty
-            ? state.tagCounts.map(\.name).filter { $0.hasPrefix(Note.normalizeTag(draft)) && !note.tags.contains($0) }.prefix(5)
-            : []
-        VStack(alignment: .leading, spacing: 6) {
-            FlowLayout(spacing: 6) {
-                ForEach(note.tags, id: \.self) { tag in
-                    HStack(spacing: 4) {
-                        Text("#" + tag).font(Theme.body(12)).foregroundStyle(Color(hex: 0xDDDDDD))
-                        TagRemoveButton { state.removeTag(tag, from: note.id) }
-                    }
-                    .padding(.leading, 9).padding(.trailing, 4).frame(height: 24)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.field))
-                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.fieldBorder))
-                }
-                if editing {
-                    KeyTextField(text: draft, placeholder: "etiqueta", font: Theme.nsBody(12), focus: true,
-                                 onChange: { v in
-                                     if v.hasSuffix(",") { commit(String(v.dropLast())) } else { draft = v }
-                                 },
-                                 onSubmit: { commit(draft) },
-                                 onEscape: { draft = ""; editing = false },
-                                 onEndEditing: { commit(draft); editing = false })
-                        .padding(.horizontal, 8).frame(width: 110, height: 24)
-                        .background(RoundedRectangle(cornerRadius: 3).fill(.black))
-                        .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.orange))
-                } else {
-                    AddTagButton { draft = ""; editing = true }
-                }
-            }
-            if !suggestions.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(suggestions), id: \.self) { s in
-                        Text("#" + s).font(Theme.body(11)).foregroundStyle(Theme.textSoft)
-                            .padding(.horizontal, 7).frame(height: 20)
-                            .background(RoundedRectangle(cornerRadius: 3).fill(Color(hex: 0x141414)))
-                            .onTapGesture { commit(s) }
-                    }
-                }
-            }
-        }
-        .padding(.bottom, 10)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color(hex: 0x1C1C1C)).frame(height: 1) }
-    }
-
-    private func commit(_ value: String) {
-        if !Note.normalizeTag(value).isEmpty { state.addTag(value, to: note.id) }
-        draft = ""
-    }
-}
-
-private struct TagRemoveButton: View {
-    let action: () -> Void
-    @State private var hover = false
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(hover ? .white : Theme.textMuted)
-                .frame(width: 16, height: 16)
-                .background(RoundedRectangle(cornerRadius: 2).fill(hover ? Theme.fieldBorder : .clear))
-        }
-        .buttonStyle(.plain).help("Quitar etiqueta").onHover { hover = $0 }
-    }
-}
-
-private struct AddTagButton: View {
-    let action: () -> Void
-    @State private var hover = false
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: "plus").font(.system(size: 9, weight: .semibold))
-                Text("Etiqueta").font(Theme.body(12))
-            }
-            .foregroundStyle(hover ? .white : Color(hex: 0x999999))
-            .padding(.horizontal, 9).frame(height: 24)
-            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(hover ? Color(hex: 0x666666) : Color(hex: 0x333333),
-                                                                     style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
-        }
-        .buttonStyle(.plain).onHover { hover = $0 }
-    }
-}
-
-/// Distribuye las etiquetas en varias líneas.
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(proposal.width ?? .infinity, subviews)
-        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0,
-                      height: rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, rows.count - 1)))
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var y = bounds.minY
-        for row in arrange(bounds.width, subviews) {
-            var x = bounds.minX
-            for i in row.indices {
-                let size = subviews[i].sizeThatFits(.unspecified)
-                subviews[i].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: ProposedViewSize(size))
-                x += size.width + spacing
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private func arrange(_ width: CGFloat, _ subviews: Subviews) -> [(indices: [Int], width: CGFloat, height: CGFloat)] {
-        var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
-        var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
-        for i in subviews.indices {
-            let s = subviews[i].sizeThatFits(.unspecified)
-            if !current.indices.isEmpty, current.width + spacing + s.width > width {
-                rows.append(current)
-                current = ([], 0, 0)
-            }
-            current.width += (current.indices.isEmpty ? 0 : spacing) + s.width
-            current.height = max(current.height, s.height)
-            current.indices.append(i)
-        }
-        if !current.indices.isEmpty { rows.append(current) }
-        return rows
-    }
 }
 
 /// ⌘A: si el bloque con el foco ya está seleccionado entero (o vacío), selecciona todos los bloques

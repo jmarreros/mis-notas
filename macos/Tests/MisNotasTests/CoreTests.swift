@@ -13,7 +13,6 @@ typealias Attachment = MisNotasCore.Attachment
 
         let n = notes[0]
         #expect(n.title == "Viaje a Asturias")
-        #expect(n.tags == ["viaje", "Pendiente"])
         #expect(n.created == 1_755_250_200_000)
         #expect(n.updated != nil)
 
@@ -97,14 +96,14 @@ final class FakeServer: SyncTransport {
         let (b, syncB) = try client(server)
 
         let nb = try a.save(Notebook(name: "Viajes"))
-        var note = try a.save(Note(notebookId: nb.id, title: "Kioto", blocks: [.paragraph("ryokan")], tags: ["japón"]))
+        var note = try a.save(Note(notebookId: nb.id, title: "Kioto", blocks: [.paragraph("ryokan")]))
         #expect(try await syncA.sync() == .init(pushed: 2, pulled: 0))
         #expect(try a.dirtyRecords().notes.isEmpty)
 
         _ = try await syncB.sync()
         #expect(try b.notes().map(\.title) == ["Kioto"])
         #expect(try b.notebooks().map(\.name) == ["Viajes"])
-        #expect(try b.search("japon") == [note.id])
+        #expect(try b.search("kioto") == [note.id])
         #expect(try b.search("RYOK") == [note.id])
 
         // B edita, A recibe.
@@ -154,6 +153,22 @@ final class FakeServer: SyncTransport {
         _ = try await syncA.sync(); _ = try await syncB.sync()
         #expect(try b.notes().isEmpty)
         #expect(try b.search("borrar").isEmpty)
+    }
+
+    @Test func notebookOrderSyncs() async throws {
+        let server = FakeServer()
+        let (a, syncA) = try client(server)
+        let (b, syncB) = try client(server)
+        let x = try a.save(Notebook(name: "A"))
+        let y = try a.save(Notebook(name: "B"))
+        let z = try a.save(Notebook(name: "C"))
+        #expect(try a.notebooks().map(\.name) == ["A", "B", "C"])
+
+        try a.reorderNotebooks([z.id, x.id, y.id])
+        #expect(try a.notebooks().map(\.name) == ["C", "A", "B"])
+
+        _ = try await syncA.sync(); _ = try await syncB.sync()
+        #expect(try b.notebooks().map(\.name) == ["C", "A", "B"])
     }
 
     @Test func attachmentsUploadBeforePush() async throws {

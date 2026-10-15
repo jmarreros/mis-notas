@@ -294,6 +294,10 @@ struct ImageBlockView: View {
     @Environment(SyncCoordinator.self) private var sync
     let note: Note
     let block: Block
+    @State private var available: CGFloat = 0
+    @State private var liveWidth: CGFloat?
+    @State private var dragStart: CGFloat?
+    @State private var hover = false
 
     var body: some View {
         let id = block.attachmentId ?? ""
@@ -301,9 +305,7 @@ struct ImageBlockView: View {
         VStack(alignment: .leading, spacing: 8) {
             Group {
                 if let image = loadImage(id) {
-                    Image(nsImage: image).resizable().scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 420, alignment: .leading)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    resizable(image)
                 } else {
                     HatchedRect()
                         .frame(height: 220)
@@ -321,6 +323,55 @@ struct ImageBlockView: View {
                          onMoveDown: { state.moveFocus(from: block.id, up: false, in: note.id) })
         }
         .padding(.vertical, 4)
+    }
+
+    /// Imagen con asas en las esquinas para cambiar su tamaño manteniendo la proporción.
+    @ViewBuilder
+    private func resizable(_ image: NSImage) -> some View {
+        let aspect = image.size.width > 0 ? image.size.height / image.size.width : 1
+        let fitted = available > 0 ? min(available, 420 / max(aspect, 0.01)) : 0
+        let width = max(40, min(liveWidth ?? CGFloat(block.width ?? Double(fitted)), max(available, 40)))
+        ZStack(alignment: .topLeading) {
+            Color.clear.frame(height: 1)
+                .background(GeometryReader { geo in Color.clear.onAppear { available = geo.size.width }
+                    .onChange(of: geo.size.width) { _, w in available = w } })
+            Image(nsImage: image).resizable().scaledToFit()
+                .frame(width: width, height: width * aspect)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.orange, lineWidth: hover || dragStart != nil ? 1 : 0))
+                .overlay {
+                    if hover || dragStart != nil {
+                        handles(width: width, height: width * aspect, current: width)
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { hover = $0 }
+    }
+
+    private func handles(width: CGFloat, height: CGFloat, current: CGFloat) -> some View {
+        ZStack {
+            ForEach(0..<4, id: \.self) { i in
+                let right = i % 2 == 1, bottom = i >= 2
+                RoundedRectangle(cornerRadius: 2).fill(Theme.orange)
+                    .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(.white, lineWidth: 1.5))
+                    .frame(width: 11, height: 11)
+                    .contentShape(Rectangle().inset(by: -5))
+                    .position(x: right ? width : 0, y: bottom ? height : 0)
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { v in
+                            if dragStart == nil { dragStart = current }
+                            let dx = right ? v.translation.width : -v.translation.width
+                            liveWidth = max(40, min(available, (dragStart ?? current) + dx))
+                        }
+                        .onEnded { _ in
+                            if let w = liveWidth { state.updateBlock(note.id, block.id) { $0.width = Double(w.rounded()) } }
+                            liveWidth = nil; dragStart = nil
+                        })
+                    .onHover { inside in if inside { NSCursor.crosshair.push() } else { NSCursor.pop() } }
+            }
+        }
+        .frame(width: width, height: height)
     }
 
     private func loadImage(_ id: String) -> NSImage? {

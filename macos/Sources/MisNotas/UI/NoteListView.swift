@@ -219,7 +219,6 @@ struct NoteRow: View {
             let nb = state.notebookName(note.notebookId)
             if !nb.isEmpty { parts.append(nb) }
         }
-        parts += note.tags.map { "#" + $0 }
         return parts.joined(separator: "  ")
     }
 
