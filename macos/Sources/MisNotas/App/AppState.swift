@@ -15,6 +15,10 @@ enum SearchScope { case all, current }
 struct FocusTarget: Equatable {
     var noteId: String
     var key: String
+    /// Cursor al principio en vez de al final (al bajar con ↓ desde el bloque anterior).
+    var atStart = false
+
+    static func == (a: Self, b: Self) -> Bool { a.noteId == b.noteId && a.key == b.key }
 }
 
 /// Estado de la interfaz. Copia en memoria de la réplica local: toda edición se escribe
@@ -38,6 +42,8 @@ final class AppState {
     var focusSearchToken = 0
     /// Último bloque con el foco: los bloques nuevos se insertan detrás de él.
     var activeBlockId: String?
+    /// Nota con todos sus bloques seleccionados (⌘A con el bloque actual ya seleccionado entero).
+    var allSelectedNoteId: String?
     var errorMessage: String?
     /// Cambia cuando se descarga una imagen, para refrescar las vistas que la muestran.
     var attachmentsVersion = 0
@@ -242,6 +248,7 @@ final class AppState {
     /// Inserta un bloque detrás del bloque activo (o al final) y le da el foco.
     func insertBlock(_ block: Block, focusKey: String) {
         guard let id = selectedId else { return }
+        registerUndo(id, name: "Insertar bloque")
         update(id) { n in
             var at = n.blocks.endIndex
             if let active = activeBlockId, let i = n.blocks.firstIndex(where: { $0.id == active }) {
@@ -264,6 +271,7 @@ final class AppState {
     }
 
     func removeBlock(_ blockId: String, in noteId: String) {
+        registerUndo(noteId, name: "Eliminar bloque")
         var focusId: String?
         update(noteId) { n in
             guard let i = n.blocks.firstIndex(where: { $0.id == blockId }) else { return }
@@ -273,6 +281,183 @@ final class AppState {
             focusId = n.blocks[max(0, i - 1)].id
         }
         if let focusId { focus = FocusTarget(noteId: noteId, key: "block:" + focusId) }
+    }
+
+    /// `---` + Intro en un párrafo: lo parte en texto anterior, línea horizontal y texto posterior.
+    func insertDivider(_ blockId: String, before: String, after: String, in noteId: String) {
+        registerUndo(noteId, name: "Insertar línea")
+        var focusId: String?
+        update(noteId) { n in
+            guard let i = n.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+            var at = i + 1
+            if InlineHTML.plainText(before).isEmpty {
+                n.blocks[i] = .divider()
+            } else {
+                n.blocks[i].html = before
+                n.blocks.insert(.divider(), at: at)
+                at += 1
+            }
+            // Si no queda texto detrás y ya hay un párrafo vacío debajo, se reutiliza.
+            if InlineHTML.plainText(after).isEmpty, at < n.blocks.count, n.blocks[at].type == .p,
+               InlineHTML.plainText(n.blocks[at].html ?? "").isEmpty {
+                focusId = n.blocks[at].id
+            } else {
+                let p = Block.paragraph(InlineHTML.plainText(after).isEmpty ? "" : after)
+                n.blocks.insert(p, at: at)
+                focusId = p.id
+            }
+        }
+        if let focusId {
+            activeBlockId = focusId
+            focus = FocusTarget(noteId: noteId, key: "block:" + focusId)
+        }
+    }
+
+    // MARK: Deshacer
+
+    /// Guarda los bloques actuales de la nota en el deshacer de la ventana (el mismo que usa el texto,
+    /// así ⌘Z sigue el orden real). Al deshacer se registra el estado de ese momento para rehacer.
+    private func registerUndo(_ noteId: String, name: String) {
+        guard let um = NSApp.keyWindow?.undoManager,
+              let blocks = notes.first(where: { $0.id == noteId })?.blocks else { return }
+        um.registerUndo(withTarget: self) { s in
+            MainActor.assumeIsolated { s.restoreBlocks(blocks, in: noteId, name: name) }
+        }
+        um.setActionName(name)
+    }
+
+    private func restoreBlocks(_ blocks: [Block], in noteId: String, name: String) {
+        registerUndo(noteId, name: name)
+        allSelectedNoteId = nil
+        update(noteId) { $0.blocks = blocks }
+        if let first = blocks.first {
+            activeBlockId = first.id
+            focus = FocusTarget(noteId: noteId, key: Self.focusKey(first, last: false), atStart: true)
+        }
+    }
+
+    // MARK: Selección de todos los bloques
+
+    func selectAllBlocks() {
+        guard let id = selectedId else { return }
+        focus = nil
+        allSelectedNoteId = id
+    }
+
+    /// Texto plano de todos los bloques, para copiar.
+    func plainText(of noteId: String) -> String {
+        guard let n = notes.first(where: { $0.id == noteId }) else { return "" }
+        return n.blocks.map { b -> String in
+            switch b.type {
+            case .todo: return (b.items ?? []).map { "• " + $0.t }.joined(separator: "\n")
+            case .code: return b.text ?? ""
+            case .link: return b.url ?? ""
+            case .hr: return "---"
+            default: return b.plainText
+            }
+        }.joined(separator: "\n")
+    }
+
+    /// Sustituye todos los bloques por un párrafo (vacío o con el texto tecleado) y lo enfoca.
+    func replaceAllBlocks(in noteId: String, with text: String = "") {
+        let p = Block.paragraph(InlineHTML.escape(text))
+        registerUndo(noteId, name: text.isEmpty ? "Eliminar todo" : "Escribir")
+        update(noteId) { $0.blocks = [p] }
+        allSelectedNoteId = nil
+        activeBlockId = p.id
+        focus = FocusTarget(noteId: noteId, key: "block:" + p.id)
+    }
+
+    /// Clic en la zona vacía del editor: cursor al final del último bloque (siempre hay un párrafo al final).
+    func focusEnd(of noteId: String) {
+        guard let n = notes.first(where: { $0.id == noteId }), !n.isTrashed else { return }
+        var last = n.blocks.last
+        if last?.type != .p {
+            update(noteId) { Self.ensureTrailingParagraph(&$0) }
+            last = notes.first(where: { $0.id == noteId })?.blocks.last
+        }
+        guard let last else { return }
+        allSelectedNoteId = nil
+        activeBlockId = last.id
+        focus = FocusTarget(noteId: noteId, key: Self.focusKey(last, last: true))
+    }
+
+    // MARK: Navegación con flechas
+
+    /// Clave de foco de un bloque; en las listas, el primer o el último elemento.
+    static func focusKey(_ b: Block, last: Bool) -> String {
+        switch b.type {
+        case .p, .h, .code: return "block:" + b.id
+        case .todo: return "todo:\(b.id):\(last ? max(0, (b.items?.count ?? 1) - 1) : 0)"
+        case .link: return "url:" + b.id
+        case .img: return "caption:" + (b.attachmentId ?? "")
+        case .hr: return "hr:" + b.id
+        }
+    }
+
+    /// ↑/↓ en el borde de un bloque: pasa al bloque anterior o siguiente (o al título).
+    /// `blockId == nil` es el título. `item` es el elemento actual si el bloque es una lista.
+    func moveFocus(from blockId: String?, item: Int? = nil, up: Bool, in noteId: String) {
+        guard let n = notes.first(where: { $0.id == noteId }) else { return }
+        let target: Int
+        if let blockId {
+            guard let i = n.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+            let b = n.blocks[i]
+            if b.type == .todo, let item {
+                let next = item + (up ? -1 : 1)
+                if (b.items ?? []).indices.contains(next) {
+                    focus = FocusTarget(noteId: noteId, key: "todo:\(b.id):\(next)")
+                    return
+                }
+            }
+            target = i + (up ? -1 : 1)
+            if target < 0 {
+                focus = FocusTarget(noteId: noteId, key: "title")
+                return
+            }
+        } else {
+            guard !up else { return }
+            target = 0
+        }
+        guard n.blocks.indices.contains(target) else { return }
+        let b = n.blocks[target]
+        activeBlockId = b.id
+        focus = FocusTarget(noteId: noteId, key: Self.focusKey(b, last: up), atStart: !up)
+    }
+
+    /// Intro en un elemento vacío de una lista: termina la lista y sigue en un párrafo.
+    /// Si quedaban elementos debajo, pasan a una lista nueva tras el párrafo.
+    func exitList(_ blockId: String, item: Int, in noteId: String) {
+        registerUndo(noteId, name: "Terminar lista")
+        var focusId: String?
+        update(noteId) { n in
+            guard let i = n.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+            let items = n.blocks[i].items ?? []
+            guard items.indices.contains(item) else { return }
+            let before = Array(items[..<item]), after = Array(items[(item + 1)...])
+            var at = i + 1
+            if before.isEmpty {
+                n.blocks.remove(at: i)
+                at = i
+            } else {
+                n.blocks[i].items = before
+            }
+            // Si justo debajo ya hay un párrafo vacío, se reutiliza.
+            if after.isEmpty, at < n.blocks.count, n.blocks[at].type == .p,
+               InlineHTML.plainText(n.blocks[at].html ?? "").isEmpty {
+                focusId = n.blocks[at].id
+            } else {
+                let p = Block.paragraph()
+                n.blocks.insert(p, at: at)
+                if !after.isEmpty { n.blocks.insert(.todo(after), at: at + 1) }
+                focusId = p.id
+            }
+            Self.ensureTrailingParagraph(&n)
+        }
+        if let focusId {
+            activeBlockId = focusId
+            focus = FocusTarget(noteId: noteId, key: "block:" + focusId)
+        }
     }
 
     /// Alterna el bloque activo entre párrafo y encabezado.

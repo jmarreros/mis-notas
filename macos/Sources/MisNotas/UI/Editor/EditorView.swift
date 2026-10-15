@@ -10,15 +10,25 @@ struct EditorView: View {
             VStack(spacing: 0) {
                 toolbar(note)
                 if note.isTrashed { trashBanner(note) }
-                ScrollView {
-                    NoteBody(note: note)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 48).padding(.top, 32).padding(.bottom, 64)
+                GeometryReader { geo in
+                    ScrollView {
+                        NoteBody(note: note)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 48).padding(.top, 32).padding(.bottom, 64)
+                            // Ocupa al menos el alto visible: un clic en la zona vacía empieza a escribir.
+                            .frame(minHeight: geo.size.height, alignment: .top)
+                            .background {
+                                Color.black.opacity(0.001)
+                                    .onTapGesture { state.focusEnd(of: note.id) }
+                            }
+                    }
                 }
                 .scrollIndicators(.automatic)
+                .background(SelectionKeySink(active: state.allSelectedNoteId == note.id, noteId: note.id))
                 footer(note)
             }
             .disabled(false)
+            .onAppear { SelectAllMonitor.install(state) }
         } else {
             VStack(spacing: 14) {
                 Text("NINGUNA NOTA SELECCIONADA").font(Theme.display(22, weight: .bold)).tracking(0.4)
@@ -164,7 +174,8 @@ struct NoteBody: View {
             KeyTextField(text: note.title, placeholder: "Sin título", font: Theme.nsDisplay(42, weight: .bold),
                          focus: isFocused("title"), onFocused: { clearFocus("title") },
                          onChange: { v in state.update(note.id) { $0.title = v } },
-                         onSubmit: { focusFirstBlock() })
+                         onSubmit: { focusFirstBlock() },
+                         onMoveDown: { focusFirstBlock() })
 
             TagBar(note: note)
 
@@ -178,17 +189,7 @@ struct NoteBody: View {
     private func isFocused(_ key: String) -> Bool { state.focus == FocusTarget(noteId: note.id, key: key) }
     private func clearFocus(_ key: String) { if isFocused(key) { state.focus = nil } }
 
-    private func focusFirstBlock() {
-        guard let first = note.blocks.first else { return }
-        let key: String
-        switch first.type {
-        case .todo: key = "todo:\(first.id):0"
-        case .link: key = "url:" + first.id
-        case .img: key = "caption:" + (first.attachmentId ?? "")
-        default: key = "block:" + first.id
-        }
-        state.focus = FocusTarget(noteId: note.id, key: key)
-    }
+    private func focusFirstBlock() { state.moveFocus(from: nil, up: false, in: note.id) }
 }
 
 struct TagBar: View {
@@ -318,5 +319,100 @@ struct FlowLayout: Layout {
         }
         if !current.indices.isEmpty { rows.append(current) }
         return rows
+    }
+}
+
+/// ⌘A: si el bloque con el foco ya está seleccionado entero (o vacío), selecciona todos los bloques
+/// de la nota. Cada bloque es un campo de texto aparte, así que no hay una selección nativa común.
+@MainActor
+enum SelectAllMonitor {
+    private static var installed = false
+
+    static func install(_ state: AppState) {
+        guard !installed else { return }
+        installed = true
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "a",
+                  let responder = event.window?.firstResponder else { return event }
+            let wholeBlock: Bool
+            switch responder {
+            case is SelectionKeySink.View: return nil
+            case is SelectableArea.View: wholeBlock = true
+            case let tv as NSTextView where tv is BlockTextView || tv.delegate is KeyTextField.Field:
+                wholeBlock = tv.selectedRange().length == tv.string.utf16.count
+            default: return event
+            }
+            guard wholeBlock else { return event }
+            state.selectAllBlocks()
+            return nil
+        }
+    }
+}
+
+/// Recibe el teclado mientras todos los bloques están seleccionados: copiar, cortar, borrar
+/// o escribir encima. Cualquier otro clic o flecha quita la selección.
+struct SelectionKeySink: NSViewRepresentable {
+    @Environment(AppState.self) private var state
+    var active: Bool
+    var noteId: String
+
+    final class View: NSView {
+        weak var state: AppState?
+        var noteId = ""
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func resignFirstResponder() -> Bool {
+            if state?.allSelectedNoteId == noteId { state?.allSelectedNoteId = nil }
+            return true
+        }
+
+        override func keyDown(with event: NSEvent) { interpretKeyEvents([event]) }
+
+        @objc func copy(_ sender: Any?) {
+            guard let state else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(state.plainText(of: noteId), forType: .string)
+        }
+
+        @objc func cut(_ sender: Any?) {
+            copy(sender)
+            state?.replaceAllBlocks(in: noteId)
+        }
+
+        override func selectAll(_ sender: Any?) {}
+        override func deleteBackward(_ sender: Any?) { state?.replaceAllBlocks(in: noteId) }
+        override func deleteForward(_ sender: Any?) { state?.replaceAllBlocks(in: noteId) }
+
+        override func insertText(_ insertString: Any) {
+            let text = (insertString as? NSAttributedString)?.string ?? (insertString as? String) ?? ""
+            state?.replaceAllBlocks(in: noteId, with: text)
+        }
+
+        private func exit() { window?.makeFirstResponder(nil) }
+        override func cancelOperation(_ sender: Any?) { exit() }
+        override func moveUp(_ sender: Any?) { exit() }
+        override func moveDown(_ sender: Any?) { exit() }
+        override func moveLeft(_ sender: Any?) { exit() }
+        override func moveRight(_ sender: Any?) { exit() }
+        override func insertNewline(_ sender: Any?) { exit() }
+        /// Ejecuta las acciones que implementa esta vista; el resto se ignora (sin pitido).
+        override func doCommand(by selector: Selector) {
+            if responds(to: selector) { perform(selector, with: nil) }
+        }
+    }
+
+    func makeNSView(context: Context) -> View { View() }
+
+    func updateNSView(_ v: View, context: Context) {
+        v.state = state
+        v.noteId = noteId
+        if active {
+            DispatchQueue.main.async {
+                guard let window = v.window, window.firstResponder !== v else { return }
+                window.makeFirstResponder(v)
+            }
+        }
     }
 }

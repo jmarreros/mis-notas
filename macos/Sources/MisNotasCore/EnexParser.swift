@@ -204,6 +204,9 @@ public struct ENMLConverter {
                     flushTodo()
                     para += InlineHTML.escape(indent + marker)
                 }
+            case "hr":
+                flushTodo(); flushParagraph()
+                blocks.append(.divider())
             case "td", "th":
                 if cellIndex > 0 { appendText(" | ") }
                 cellIndex += 1

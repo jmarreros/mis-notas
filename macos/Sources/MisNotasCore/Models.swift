@@ -24,7 +24,7 @@ public struct TodoItem: Codable, Equatable, Hashable {
 /// Un bloque de contenido. Estructura plana con campos opcionales según el tipo,
 /// idéntica al JSON que guarda la API.
 public struct Block: Codable, Equatable, Identifiable, Hashable {
-    public enum Kind: String, Codable { case p, h, todo, code, link, img }
+    public enum Kind: String, Codable { case p, h, todo, code, link, img, hr }
 
     public var id: String
     public var type: Kind
@@ -49,6 +49,7 @@ public struct Block: Codable, Equatable, Identifiable, Hashable {
     public static func todo(_ items: [TodoItem] = [TodoItem(t: "")]) -> Block { Block(type: .todo, items: items) }
     public static func code(_ text: String = "", lang: String = "CÓDIGO") -> Block { Block(type: .code, lang: lang, text: text) }
     public static func link(url: String = "", title: String = "Nuevo enlace") -> Block { Block(type: .link, title: title, url: url) }
+    public static func divider() -> Block { Block(type: .hr) }
     public static func image(attachmentId: String, caption: String = "") -> Block { Block(type: .img, attachmentId: attachmentId, caption: caption) }
 
     public var isText: Bool { type == .p || type == .h }
@@ -60,6 +61,7 @@ public struct Block: Codable, Equatable, Identifiable, Hashable {
         case .code: return text ?? ""
         case .link: return [title, url].compactMap { $0 }.joined(separator: " ")
         case .img: return caption ?? ""
+        case .hr: return ""
         }
     }
 }

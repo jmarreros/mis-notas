@@ -27,7 +27,7 @@ class PushRequest extends FormRequest
             'notes.*.notebook_id' => ['nullable', 'uuid'],
             'notes.*.title' => ['nullable', 'string', 'max:255'],
             'notes.*.blocks' => ['present', 'array'],
-            'notes.*.blocks.*.type' => ['required', 'in:p,h,todo,code,link,img'],
+            'notes.*.blocks.*.type' => ['required', 'in:p,h,todo,code,link,img,hr'],
             'notes.*.tags' => ['present', 'array'],
             'notes.*.tags.*' => ['string', 'max:100'],
             'notes.*.created_at' => ['required', 'integer', 'min:0'],

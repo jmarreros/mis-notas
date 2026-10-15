@@ -16,6 +16,8 @@ struct KeyTextField: NSViewRepresentable {
     var onDeleteEmpty: (() -> Void)?
     var onEscape: (() -> Void)?
     var onEndEditing: (() -> Void)?
+    var onMoveUp: (() -> Void)?
+    var onMoveDown: (() -> Void)?
 
     final class Field: NSTextField {
         override class var cellClass: AnyClass? {
@@ -59,7 +61,7 @@ struct KeyTextField: NSViewRepresentable {
     /// La altura la marca la fuente (no el contenedor), para que el texto y el cursor no se recorten.
     func sizeThatFits(_ proposal: ProposedViewSize, nsView f: Field, context: Context) -> CGSize? {
         let height = ceil(f.cell?.cellSize.height ?? f.intrinsicContentSize.height)
-        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? f.intrinsicContentSize.width
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? ceil(f.cell?.cellSize.width ?? 0) // el ancho intrínseco es -1 en campos desplazables
         return CGSize(width: width, height: height)
     }
 
@@ -138,6 +140,14 @@ struct KeyTextField: NSViewRepresentable {
             case #selector(NSResponder.deleteBackward(_:)):
                 guard textView.string.isEmpty, let del = parent.onDeleteEmpty else { return false }
                 del()
+                return true
+            case #selector(NSResponder.moveUp(_:)):
+                guard let up = parent.onMoveUp else { return false }
+                up()
+                return true
+            case #selector(NSResponder.moveDown(_:)):
+                guard let down = parent.onMoveDown else { return false }
+                down()
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 guard let esc = parent.onEscape else { return false }

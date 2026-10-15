@@ -14,9 +14,15 @@ struct GrowingTextView: NSViewRepresentable {
     var mode: Mode
     var placeholder = ""
     var focus = false
+    var focusAtStart = false
     var onFocused: () -> Void = {}
     var onChange: (String) -> Void
     var onDeleteEmpty: (() -> Void)?
+    /// Intro tras una línea `---`: recibe el HTML de antes y de después de esa línea.
+    var onDivider: ((String, String) -> Void)?
+    /// ↑ en la primera línea / ↓ en la última: salir al bloque anterior o siguiente.
+    var onMoveUp: (() -> Void)?
+    var onMoveDown: (() -> Void)?
 
     static let textColor = NSColor(hex: 0xE6E6E6)
     static let linkColor = NSColor(hex: 0xFF5500)
@@ -84,6 +90,8 @@ struct GrowingTextView: NSViewRepresentable {
             m.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: m.length))
             content = m
         }
+        // Las acciones de deshacer del texto anterior ya no casan con el nuevo contenido.
+        if let storage = tv.textStorage { tv.undoManager?.removeAllActions(withTarget: storage) }
         tv.textStorage?.setAttributedString(content)
         tv.typingAttributes = attrs
         tv.placeholder = placeholder
@@ -94,6 +102,9 @@ struct GrowingTextView: NSViewRepresentable {
         context.coordinator.parent = self
         tv.onBecomeFirstResponder = onFocused
         tv.onDeleteEmpty = onDeleteEmpty
+        tv.onDivider = mode == .plain ? nil : onDivider
+        tv.onMoveUp = onMoveUp
+        tv.onMoveDown = onMoveDown
         tv.isEditable = context.environment.isEnabled
         tv.fontFor = { b, i in self.font(bold: b, italic: i) }
         tv.baseAttributes = [.font: font(bold: false, italic: false), .foregroundColor: baseColor, .paragraphStyle: paragraphStyle]
@@ -107,7 +118,7 @@ struct GrowingTextView: NSViewRepresentable {
             DispatchQueue.main.async {
                 guard let window = tv.window, window.firstResponder !== tv else { return }
                 window.makeFirstResponder(tv)
-                tv.setSelectedRange(NSRange(location: tv.string.utf16.count, length: 0))
+                tv.setSelectedRange(NSRange(location: focusAtStart ? 0 : tv.string.utf16.count, length: 0))
             }
         }
     }
@@ -164,6 +175,39 @@ final class BlockTextView: NSTextView {
     var baseAttributes: [NSAttributedString.Key: Any] = [:]
     var onBecomeFirstResponder: (() -> Void)?
     var onDeleteEmpty: (() -> Void)?
+    var onDivider: ((String, String) -> Void)?
+    var onMoveUp: (() -> Void)?
+    var onMoveDown: (() -> Void)?
+
+    override func moveUp(_ sender: Any?) {
+        if let onMoveUp, selectedRange().length == 0, caretLine().minY <= 0.5 { onMoveUp(); return }
+        super.moveUp(sender)
+    }
+
+    override func moveDown(_ sender: Any?) {
+        if let onMoveDown, selectedRange().length == 0, let lm = layoutManager, let tc = textContainer,
+           caretLine().maxY >= lm.usedRect(for: tc).maxY - 0.5 { onMoveDown(); return }
+        super.moveDown(sender)
+    }
+
+    /// Rectángulo de la línea donde está el cursor, en coordenadas del contenedor de texto.
+    private func caretLine() -> NSRect {
+        guard let lm = layoutManager, let tc = textContainer else { return .zero }
+        lm.ensureLayout(for: tc)
+        let text = string as NSString
+        let loc = selectedRange().location
+        if text.length == 0 { return lm.extraLineFragmentRect }
+        if loc >= text.length, text.character(at: text.length - 1) == 0x0A { return lm.extraLineFragmentRect }
+        let glyph = lm.glyphIndexForCharacter(at: min(loc, text.length - 1))
+        return lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+    }
+
+    /// El deshacer no retiene su destino: al quitar el bloque se borran sus acciones de texto
+    /// para que ⌘Z no apunte a un texto que ya no existe.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, let storage = textStorage { undoManager?.removeAllActions(withTarget: storage) }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -189,6 +233,31 @@ final class BlockTextView: NSTextView {
     override func deleteBackward(_ sender: Any?) {
         if string.isEmpty, let onDeleteEmpty { onDeleteEmpty(); return }
         super.deleteBackward(sender)
+    }
+
+    /// Intro al final de una línea que solo contiene `---` la convierte en una línea horizontal,
+    /// como en Evernote. El texto de antes y de después se queda en párrafos aparte.
+    override func insertNewline(_ sender: Any?) {
+        let text = string as NSString
+        let cursor = selectedRange()
+        if let onDivider, cursor.length == 0 {
+            let line = text.lineRange(for: NSRange(location: cursor.location, length: 0))
+            var content = line
+            if content.length > 0, text.character(at: NSMaxRange(content) - 1) == 0x0A { content.length -= 1 }
+            if NSMaxRange(content) == cursor.location,
+               text.substring(with: content).trimmingCharacters(in: .whitespaces) == "---" {
+                let full = attributedString()
+                let beforeEnd = max(0, content.location - 1) // sin el salto de línea anterior
+                let before = InlineHTML.html(from: full.attributedSubstring(from: NSRange(location: 0, length: content.location == 0 ? 0 : beforeEnd)))
+                let afterStart = NSMaxRange(line)
+                let after = InlineHTML.html(from: full.attributedSubstring(from: NSRange(location: afterStart, length: text.length - afterStart)))
+                // Suelta el foco para que el bloque recargue su texto (no se recarga mientras se escribe).
+                window?.makeFirstResponder(nil)
+                onDivider(before, after)
+                return
+            }
+        }
+        super.insertNewline(sender)
     }
 
     override func didChangeText() {
