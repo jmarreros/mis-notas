@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import MisNotasCore
 import Network
@@ -16,6 +17,9 @@ final class SyncCoordinator {
     }
 
     static let serverURLKey = "serverURL"
+    /// Huella del servidor y token con los que está sincronizada la réplica local.
+    /// Se conserva al desconectar, para detectar luego un servidor distinto.
+    static let syncedServerKey = "syncedServer"
 
     private(set) var status: Status = .notConfigured
     private let state: AppState
@@ -98,9 +102,45 @@ final class SyncCoordinator {
         }
     }
 
+    /// Guarda servidor y token. Si cambian respecto a los guardados, se reinicia el estado de
+    /// sincronización para que un servidor nuevo reciba todas las notas.
+    func save(url: String, token: String) {
+        let url = Self.normalize(url)
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let identity = SHA256.hash(data: Data((url + "\n" + token).utf8)).map { String(format: "%02x", $0) }.joined()
+        let previous = UserDefaults.standard.string(forKey: Self.syncedServerKey)
+        if let previous, previous != identity { try? state.repo.resetSyncState() }
+        UserDefaults.standard.set(identity, forKey: Self.syncedServerKey)
+        UserDefaults.standard.set(url, forKey: Self.serverURLKey)
+        Keychain.setToken(token)
+        configure()
+    }
+
+    /// Deja de sincronizar. Las notas siguen en este Mac.
+    func disconnect() {
+        UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
+        Keychain.setToken(nil)
+        configure()
+    }
+
+    /// Acepta "midominio.com", "http://127.0.0.1:8000/" o ".../api": la app añade `/api` sola.
+    static func normalize(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return "" }
+        while s.hasSuffix("/") { s.removeLast() }
+        if s.lowercased().hasSuffix("/api") { s.removeLast(4) }
+        while s.hasSuffix("/") { s.removeLast() }
+        if !s.contains("://") {
+            let local = s.hasPrefix("localhost") || s.hasPrefix("127.") || s.hasPrefix("192.168.") || s.hasPrefix("10.")
+                || s.contains(".local") || s.contains(".test")
+            s = (local ? "http://" : "https://") + s
+        }
+        return s
+    }
+
     /// Comprueba servidor y token sin modificar nada.
     static func testConnection(url: String, token: String) async -> String {
-        guard let base = URL(string: url.trimmingCharacters(in: .whitespaces)), base.scheme != nil else { return "URL no válida." }
+        guard let base = URL(string: normalize(url)), base.scheme != nil, base.host != nil else { return "URL no válida." }
         do {
             let r = try await APIClient(baseURL: base, token: token).pull(since: Int.max / 2)
             return "Conexión correcta (revisión \(r.rev))."

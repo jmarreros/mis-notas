@@ -78,7 +78,15 @@ struct SidebarView: View {
                     Image(systemName: "square.and.arrow.down").frame(width: 16)
                     Text("Importar de Evernote…")
                 }
-                SyncStatusRow()
+                HStack(spacing: 0) {
+                    SyncStatusRow()
+                    SettingsLink {
+                        Image(systemName: "gearshape").font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                            .frame(width: 26, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Servidor y sincronización  ⌘,")
+                }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
             .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -142,12 +150,12 @@ struct NavRow: View {
             Image(systemName: icon).font(.system(size: 13)).frame(width: 16)
             Text(title).font(Theme.body(14, weight: weight)).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 4)
-            Text("\(count)").font(Theme.body(12)).foregroundStyle(active ? Color(hex: 0x555555) : Theme.textMuted)
+            Text("\(count)").font(Theme.body(12)).foregroundStyle(active ? Theme.textSoft : Theme.textMuted)
         }
-        .foregroundStyle(active ? Color.black : Theme.text)
+        .foregroundStyle(active ? Color.white : Theme.text)
         .padding(.horizontal, 9)
         .frame(height: height)
-        .background(RoundedRectangle(cornerRadius: 5).fill(active ? Color.white : hover ? Color(hex: 0x1C1C1C) : .clear))
+        .background(RoundedRectangle(cornerRadius: 5).fill(active ? Color(hex: 0x2A2A2A) : hover ? Color(hex: 0x1C1C1C) : .clear))
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
         .onHover { hover = $0 }

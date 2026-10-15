@@ -146,6 +146,17 @@ public final class NotesRepository {
         }
     }
 
+    /// Al cambiar de servidor: todo vuelve a enviarse (notas, libretas e imágenes) y se descarga
+    /// desde el principio. Si el servidor ya tenía los datos, gana la versión más reciente.
+    public func resetSyncState() throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE notebook SET dirty = 1")
+            try db.execute(sql: "UPDATE note SET dirty = 1")
+            try db.execute(sql: "UPDATE attachment SET uploaded = 0")
+            try db.execute(sql: "DELETE FROM meta WHERE key = 'lastRev'")
+        }
+    }
+
     public func dirtyRecords() throws -> (notebooks: [Notebook], notes: [Note]) {
         try writer.read { db in
             (try Notebook.filter(Column("dirty") == true).fetchAll(db),
