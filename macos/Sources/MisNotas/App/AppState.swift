@@ -33,6 +33,8 @@ final class AppState {
 
     var nav: Nav = .all
     var selectedId: String?
+    /// Notas marcadas en la lista (⌘clic, ⇧clic, ⌘A). Vacío = solo `selectedId`.
+    var multiSelection: Set<String> = []
     var query = "" { didSet { if query != oldValue { updateSearch() } } }
     var scope: SearchScope = .all
     var sidebarOpen = true
@@ -101,9 +103,13 @@ final class AppState {
         let q = trimmedQuery
         guard !q.isEmpty else { return notes.filter { matches($0, nav) } }
         let base = scope == .all ? liveNotes : notes.filter { matches($0, nav) }
-        return base.filter { n in
+        let found = base.filter { n in
             searchMatches.contains(n.id) || notebookName(n.notebookId).localizedStandardContains(q)
         }
+        // Primero las que coinciden por el título; después, las de contenido. Cada grupo conserva su orden.
+        let terms = q.split(separator: " ").map(String.init)
+        let inTitle = { (n: Note) in terms.allSatisfy { n.title.localizedStandardContains($0) } }
+        return found.filter(inTitle) + found.filter { !inTitle($0) }
     }
 
     func navLabel(_ nav: Nav) -> String {
@@ -127,12 +133,51 @@ final class AppState {
     func select(nav: Nav) {
         self.nav = nav
         query = ""
+        multiSelection = []
         selectedId = list.first?.id
     }
 
     func select(note id: String) {
+        multiSelection = []
         selectedId = id
         activeBlockId = nil
+    }
+
+    // MARK: Selección múltiple
+
+    func isMarked(_ id: String) -> Bool { multiSelection.contains(id) }
+
+    func toggleMark(_ id: String) {
+        if multiSelection.isEmpty, let cur = selectedId { multiSelection = [cur] }
+        if multiSelection.contains(id) { multiSelection.remove(id) } else { multiSelection.insert(id) }
+        selectedId = id
+        activeBlockId = nil
+        if multiSelection.count <= 1 { multiSelection = [] }
+    }
+
+    func extendMark(to id: String) {
+        let ids = list.map(\.id)
+        guard let to = ids.firstIndex(of: id) else { return }
+        let from = selectedId.flatMap { ids.firstIndex(of: $0) } ?? to
+        multiSelection = Set(ids[min(from, to)...max(from, to)])
+        if multiSelection.count <= 1 { multiSelection = [] }
+    }
+
+    func markAll() {
+        let ids = list.map(\.id)
+        multiSelection = ids.count > 1 ? Set(ids) : []
+        if selectedId == nil { selectedId = ids.first }
+    }
+
+    /// Ids que viajan al arrastrar `id`: todas las marcadas si forma parte de ellas.
+    func dragPayload(for id: String) -> String {
+        guard multiSelection.contains(id) else { return id }
+        return list.map(\.id).filter(multiSelection.contains).joined(separator: "\n")
+    }
+
+    func move(ids: [String], to notebookId: String) {
+        for id in ids { move(id, to: notebookId) }
+        multiSelection = []
     }
 
     // MARK: Notas

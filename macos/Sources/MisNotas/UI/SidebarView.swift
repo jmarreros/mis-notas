@@ -41,7 +41,10 @@ struct SidebarView: View {
                                 state.select(nav: .notebook(nb.id))
                             }
                             .draggable(Self.notebookPrefix + nb.id)
-                            .dropDestination(for: String.self) { ids, _ in
+                            .dropDestination(for: String.self) { items, _ in
+                                let ids = items.flatMap { $0.split(separator: "\n").map(String.init) }
+                                let notes = ids.filter { !$0.hasPrefix(Self.notebookPrefix) }
+                                if notes.count > 1 { state.move(ids: notes, to: nb.id); return true }
                                 for id in ids {
                                     if id.hasPrefix(Self.notebookPrefix) {
                                         state.moveNotebook(String(id.dropFirst(Self.notebookPrefix.count)), onto: nb.id)
@@ -67,10 +70,6 @@ struct SidebarView: View {
                 }
                 .contextMenu {
                     Button("Vaciar Papelera", role: .destructive) { state.emptyTrash() }.disabled(state.trashCount == 0)
-                }
-                HoverRow { state.importOpen = true } label: {
-                    Image(systemName: "square.and.arrow.down").frame(width: 16)
-                    Text("Importar de Evernote…")
                 }
                 HStack(spacing: 0) {
                     SyncStatusRow()

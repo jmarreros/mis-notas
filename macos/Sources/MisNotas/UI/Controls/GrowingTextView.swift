@@ -144,6 +144,8 @@ struct GrowingTextView: NSViewRepresentable {
         return CGSize(width: width, height: ceil(height))
     }
 
+    static func dismantleNSView(_ tv: BlockTextView, coordinator: Coordinator) { coordinator.flush() }
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -151,11 +153,31 @@ struct GrowingTextView: NSViewRepresentable {
         var lastValue = ""
         init(_ parent: GrowingTextView) { self.parent = parent }
 
+        private weak var pendingView: BlockTextView?
+        private var pending: DispatchWorkItem?
+
+        /// El guardado (HTML, base de datos, lista de notas) se agrupa: hacerlo en cada pulsación
+        /// bloqueaba el hilo principal y el cursor iba por detrás del texto al escribir rápido.
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? BlockTextView else { return }
-            let value = parent.mode == .plain ? tv.string : InlineHTML.html(from: tv.attributedString())
-            lastValue = value
             tv.invalidateIntrinsicContentSize()
+            pendingView = tv
+            pending?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.flush() }
+            pending = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+
+        func textDidEndEditing(_ notification: Notification) { flush() }
+
+        func flush() {
+            pending?.cancel()
+            pending = nil
+            guard let tv = pendingView else { return }
+            pendingView = nil
+            let value = parent.mode == .plain ? tv.string : InlineHTML.html(from: tv.attributedString())
+            guard value != lastValue else { return }
+            lastValue = value
             parent.onChange(value)
         }
 
@@ -178,6 +200,12 @@ final class BlockTextView: NSTextView {
     var onDivider: ((String, String) -> Void)?
     var onMoveUp: (() -> Void)?
     var onMoveDown: (() -> Void)?
+
+    /// Oculta el puntero del ratón mientras se escribe; reaparece al moverlo.
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection([.command, .control]).isEmpty { NSCursor.setHiddenUntilMouseMoves(true) }
+        super.keyDown(with: event)
+    }
 
     override func moveUp(_ sender: Any?) {
         if let onMoveUp, selectedRange().length == 0, caretLine().minY <= 0.5 { onMoveUp(); return }

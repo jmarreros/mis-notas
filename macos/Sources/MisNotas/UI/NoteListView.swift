@@ -4,6 +4,7 @@ import SwiftUI
 struct NoteListView: View {
     @Environment(AppState.self) private var state
     @FocusState private var searchFocused: Bool
+    @FocusState private var listFocused: Bool
     @State private var nbMenuOpen = false
 
     var body: some View {
@@ -62,14 +63,28 @@ struct NoteListView: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(list) { note in
-                                NoteRow(note: note, active: note.id == state.selectedId)
+                                NoteRow(note: note, active: state.multiSelection.isEmpty ? note.id == state.selectedId : state.isMarked(note.id))
                                     .id(note.id)
-                                    .onTapGesture { state.select(note: note.id) }
-                                    .draggable(note.id)
+                                    .onTapGesture {
+                                        listFocused = true
+                                        let mods = NSEvent.modifierFlags
+                                        if mods.contains(.command) { state.toggleMark(note.id) }
+                                        else if mods.contains(.shift) { state.extendMark(to: note.id) }
+                                        else { state.select(note: note.id) }
+                                    }
+                                    .draggable(state.dragPayload(for: note.id))
                                     .contextMenu { rowMenu(note) }
                             }
                         }
                         .padding(.horizontal, 8).padding(.vertical, 6)
+                    }
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($listFocused)
+                    .onKeyPress(characters: ["a"], phases: .down) { press in
+                        guard press.modifiers == .command else { return .ignored }
+                        state.markAll()
+                        return .handled
                     }
                     .onChange(of: state.selectedId) { _, id in
                         if let id { withAnimation { proxy.scrollTo(id) } }
