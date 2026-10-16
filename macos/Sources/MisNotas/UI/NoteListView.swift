@@ -100,6 +100,7 @@ struct NoteListView: View {
     private var emptyText: String {
         if state.isSearching { return "Nada coincide con «\(state.trimmedQuery)»." }
         if state.nav == .trash { return "La Papelera está vacía." }
+        if state.nav == .recents { return "Aún no has visto ninguna nota." }
         return "No hay notas aquí. Pulsa ⌘N para crear una."
     }
 
@@ -150,6 +151,8 @@ struct NoteListView: View {
     private var notebookMenu: some View {
         VStack(alignment: .leading, spacing: 1) {
             menuItem("Todas las notas", state.liveNotes.count, state.nav == .all) { state.select(nav: .all) }
+            menuItem("Recientes", state.recentNotes.count, state.nav == .recents) { state.select(nav: .recents) }
+            menuItem("Favoritas", state.favoriteCount, state.nav == .favorites) { state.select(nav: .favorites) }
             ForEach(state.notebooks) { nb in
                 menuItem(nb.name, state.count(in: nb), state.nav == .notebook(nb.id)) { state.select(nav: .notebook(nb.id)) }
             }
@@ -182,6 +185,7 @@ struct NoteListView: View {
                     Button(nb.name) { state.move(note.id, to: nb.id) }.disabled(nb.id == note.notebookId)
                 }
             }
+            Button(note.favorite ? "Quitar de favoritas" : "Añadir a favoritas") { state.toggleFavorite(note.id) }
             Button("Mover a la Papelera") { state.trash(note.id) }
         }
     }

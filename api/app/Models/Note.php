@@ -22,6 +22,7 @@ class Note extends Model
             'blocks' => 'array',
             'created_at' => 'integer',
             'updated_at' => 'integer',
+            'favorite' => 'boolean',
             'trashed_at' => 'integer',
             'deleted_at' => 'integer',
             'rev' => 'integer',

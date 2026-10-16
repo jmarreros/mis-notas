@@ -27,8 +27,14 @@ struct SidebarView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    NavRow(icon: "doc.text", title: "Todas las notas", count: state.liveNotes.count,
-                           active: isActive(.all), height: 30, weight: .medium) { state.select(nav: .all) }
+                    VStack(alignment: .leading, spacing: 2) {
+                        NavRow(icon: "doc.text", title: "Todas las notas", count: state.liveNotes.count,
+                               active: isActive(.all), height: 30, weight: .medium) { state.select(nav: .all) }
+                        NavRow(icon: "clock", title: "Recientes", count: state.recentNotes.count,
+                               active: isActive(.recents), height: 30, weight: .medium) { state.select(nav: .recents) }
+                        NavRow(icon: "star", title: "Favoritas", count: state.favoriteCount,
+                               active: isActive(.favorites), height: 30, weight: .medium) { state.select(nav: .favorites) }
+                    }
 
                     section("LIBRETAS", trailing: AnyView(
                         IconButton(systemName: "plus", help: "Nueva libreta", size: 11, width: 22, color: Theme.textMuted) {

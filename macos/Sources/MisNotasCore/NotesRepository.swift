@@ -133,6 +133,22 @@ public final class NotesRepository {
         }
     }
 
+    // MARK: Vistas recientes (solo locales, no se sincronizan)
+
+    public func recentIDs() throws -> [String] {
+        try writer.read { db in
+            let json = try String.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'recentIds'")
+            return json.flatMap { try? JSONDecoder().decode([String].self, from: Data($0.utf8)) } ?? []
+        }
+    }
+
+    public func setRecentIDs(_ ids: [String]) throws {
+        let json = String(decoding: try JSONEncoder().encode(ids), as: UTF8.self)
+        try writer.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO meta (key, value) VALUES ('recentIds', ?)", arguments: [json])
+        }
+    }
+
     // MARK: Sincronización
 
     public func lastRev() throws -> Int {

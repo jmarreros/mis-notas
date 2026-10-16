@@ -188,6 +188,17 @@ struct GrowingTextView: NSViewRepresentable {
     }
 }
 
+/// Copia al portapapeles lo que el usuario selecciona y avisa a la barra de estado del editor.
+enum AutoCopy {
+    static let notification = Notification.Name("mn.textCopied")
+
+    static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        NotificationCenter.default.post(name: notification, object: nil)
+    }
+}
+
 /// NSTextView con formato propio (negrita/cursiva/subrayado vía atributos de InlineHTML),
 /// pegado sin formato y borrado del bloque con Retroceso cuando está vacío.
 final class BlockTextView: NSTextView {
@@ -205,6 +216,21 @@ final class BlockTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.intersection([.command, .control]).isEmpty { NSCursor.setHiddenUntilMouseMoves(true) }
         super.keyDown(with: event)
+        // Selección con el teclado (⇧ + flechas).
+        if event.modifierFlags.contains(.shift) { copySelectionToPasteboard() }
+    }
+
+    /// `mouseDown` retiene el control hasta soltar el botón: al volver, la selección ya está hecha.
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        copySelectionToPasteboard()
+    }
+
+    /// Lo seleccionado se copia solo al portapapeles, como texto sin formato.
+    private func copySelectionToPasteboard() {
+        let range = selectedRange()
+        guard range.length > 0 else { return }
+        AutoCopy.copy((string as NSString).substring(with: range))
     }
 
     override func moveUp(_ sender: Any?) {

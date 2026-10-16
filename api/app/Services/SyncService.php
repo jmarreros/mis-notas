@@ -68,6 +68,7 @@ class SyncService
                     'blocks' => $data['blocks'] ?? [],
                     'created_at' => $data['created_at'],
                     'updated_at' => $data['updated_at'],
+                    'favorite' => $data['favorite'] ?? false,
                     'trashed_at' => $data['trashed_at'] ?? null,
                     'deleted_at' => $data['deleted_at'] ?? null,
                 ];

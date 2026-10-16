@@ -118,20 +118,21 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
     public var updatedAt: Millis
     public var trashedAt: Millis?
     public var deletedAt: Millis?
+    public var favorite: Bool
     public var dirty: Bool
 
     public static let databaseTableName = "note"
 
     public init(id: String = newID(), notebookId: String?, title: String = "", blocks: [Block] = [.paragraph()],
                 createdAt: Millis = .now, updatedAt: Millis = .now,
-                trashedAt: Millis? = nil, deletedAt: Millis? = nil, dirty: Bool = true) {
+                trashedAt: Millis? = nil, deletedAt: Millis? = nil, favorite: Bool = false, dirty: Bool = true) {
         self.id = id; self.notebookId = notebookId; self.title = title; self.blocks = blocks
         self.createdAt = createdAt; self.updatedAt = updatedAt; self.trashedAt = trashedAt
-        self.deletedAt = deletedAt; self.dirty = dirty
+        self.deletedAt = deletedAt; self.favorite = favorite; self.dirty = dirty
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, notebookId, title, blocks, createdAt, updatedAt, trashedAt, deletedAt, dirty
+        case id, notebookId, title, blocks, createdAt, updatedAt, trashedAt, deletedAt, favorite, dirty
     }
 
     public init(from decoder: Decoder) throws {
@@ -144,6 +145,7 @@ public struct Note: Codable, Equatable, Identifiable, Hashable, FetchableRecord,
         updatedAt = try c.decode(Millis.self, forKey: .updatedAt)
         trashedAt = try c.decodeIfPresent(Millis.self, forKey: .trashedAt)
         deletedAt = try c.decodeIfPresent(Millis.self, forKey: .deletedAt)
+        favorite = try c.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         dirty = try c.decodeIfPresent(Bool.self, forKey: .dirty) ?? false
     }
 

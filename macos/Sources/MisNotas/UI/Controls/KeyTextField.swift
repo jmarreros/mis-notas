@@ -26,6 +26,16 @@ struct KeyTextField: NSViewRepresentable {
         }
 
         var onBecomeFirstResponder: (() -> Void)?
+
+        /// Lo seleccionado se copia solo al portapapeles (el clic retiene el control hasta soltar el botón).
+        override func mouseDown(with event: NSEvent) {
+            super.mouseDown(with: event)
+            guard let editor = currentEditor() as? NSTextView else { return }
+            let range = editor.selectedRange()
+            guard range.length > 0 else { return }
+            AutoCopy.copy((editor.string as NSString).substring(with: range))
+        }
+
         override func becomeFirstResponder() -> Bool {
             let ok = super.becomeFirstResponder()
             if ok {

@@ -30,6 +30,7 @@ class PushRequest extends FormRequest
             'notes.*.blocks.*.type' => ['required', 'in:p,h,todo,code,link,img,hr'],
             'notes.*.created_at' => ['required', 'integer', 'min:0'],
             'notes.*.updated_at' => ['required', 'integer', 'min:0'],
+            'notes.*.favorite' => ['nullable', 'boolean'],
             'notes.*.trashed_at' => ['nullable', 'integer', 'min:0'],
             'notes.*.deleted_at' => ['nullable', 'integer', 'min:0'],
         ];

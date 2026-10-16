@@ -76,6 +76,8 @@ struct AppCommands: Commands {
         CommandMenu("Nota") {
             Button("Mover a la Papelera") { if let id = state.selectedId { state.trash(id) } }
                 .keyboardShortcut(.delete, modifiers: .command)
+            Button("Añadir o quitar de favoritas") { if let id = state.selectedId { state.toggleFavorite(id) } }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             Divider()
             Button("Mostrar u ocultar barra lateral") { state.sidebarOpen.toggle() }
                 .keyboardShortcut("s", modifiers: [.command, .control])

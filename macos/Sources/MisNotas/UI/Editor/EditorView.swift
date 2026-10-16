@@ -4,6 +4,8 @@ import SwiftUI
 
 struct EditorView: View {
     @Environment(AppState.self) private var state
+    @State private var copiedNotice = false
+    @State private var noticeTask: Task<Void, Never>?
 
     var body: some View {
         if let note = state.selectedNote {
@@ -58,6 +60,11 @@ struct EditorView: View {
             IconButton(systemName: "photo", help: "Imagen") { BlockActions.addImage(state) }
             Spacer()
             NotebookPicker(note: note)
+            IconButton(systemName: note.favorite ? "star.fill" : "star",
+                       help: note.favorite ? "Quitar de favoritas  ⇧⌘F" : "Añadir a favoritas  ⇧⌘F",
+                       color: note.favorite ? Color(hex: 0xF5C542) : Theme.icon) {
+                state.toggleFavorite(note.id)
+            }
             IconButton(systemName: "trash", help: note.isTrashed ? "Eliminar definitivamente" : "Mover a la Papelera  ⌘⌫") {
                 note.isTrashed ? state.deleteForever(note.id) : state.trash(note.id)
             }
@@ -94,12 +101,26 @@ struct EditorView: View {
         return HStack {
             Text((nb.isEmpty ? "" : nb + " · ") + "Editada " + RelativeDate.short(note.updatedAt.date).lowercased())
             Spacer()
+            if copiedNotice {
+                Label("Texto copiado al portapapeles", systemImage: "checkmark")
+                    .transition(.opacity)
+                Spacer()
+            }
             Text(words == 1 ? "1 palabra" : "\(words) palabras")
         }
         .font(Theme.body(12)).foregroundStyle(Theme.textMuted)
         .padding(.horizontal, 16)
         .frame(height: 28)
         .overlay(alignment: .top) { Rectangle().fill(Theme.divider).frame(height: 1) }
+        .onReceive(NotificationCenter.default.publisher(for: AutoCopy.notification)) { _ in
+            withAnimation(.easeOut(duration: 0.15)) { copiedNotice = true }
+            noticeTask?.cancel()
+            noticeTask = Task {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.3)) { copiedNotice = false }
+            }
+        }
     }
 }
 

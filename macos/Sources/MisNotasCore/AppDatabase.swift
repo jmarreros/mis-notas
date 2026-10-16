@@ -71,6 +71,9 @@ public final class AppDatabase {
         m.registerMigration("v2-sin-etiquetas") { db in
             try db.alter(table: "note") { t in t.drop(column: "tags") }
         }
+        m.registerMigration("v3-favoritas") { db in
+            try db.alter(table: "note") { t in t.add(column: "favorite", .boolean).notNull().defaults(to: false) }
+        }
         return m
     }
 }

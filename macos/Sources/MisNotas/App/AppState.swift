@@ -4,6 +4,8 @@ import Observation
 
 enum Nav: Hashable {
     case all
+    case favorites
+    case recents
     case notebook(String)
     case trash
 }
@@ -32,7 +34,10 @@ final class AppState {
     private(set) var notes: [Note] = []
 
     var nav: Nav = .all
-    var selectedId: String?
+    var selectedId: String? { didSet { if selectedId != oldValue { noteViewed(selectedId) } } }
+    /// Últimas notas vistas, la más reciente primero (máximo `Self.recentLimit`). Solo locales.
+    private(set) var recentIds: [String] = []
+    static let recentLimit = 20
     /// Notas marcadas en la lista (⌘clic, ⇧clic, ⌘A). Vacío = solo `selectedId`.
     var multiSelection: Set<String> = []
     var query = "" { didSet { if query != oldValue { updateSearch() } } }
@@ -58,6 +63,20 @@ final class AppState {
         self.attachmentsDirectory = attachmentsDirectory
         reload()
         selectedId = list.first?.id
+        // Después de seleccionar: la nota que se abre sola al iniciar no cuenta como vista.
+        perform { recentIds = try repo.recentIDs() }
+    }
+
+    @ObservationIgnored private var skipRecent = false
+
+    private func noteViewed(_ id: String?) {
+        guard !skipRecent, let id, notes.contains(where: { $0.id == id && !$0.isTrashed }) else { return }
+        // Dentro de Recientes la lista no se reordena bajo el cursor al hacer clic.
+        if nav == .recents, recentIds.contains(id) { return }
+        recentIds.removeAll { $0 == id }
+        recentIds.insert(id, at: 0)
+        if recentIds.count > Self.recentLimit { recentIds.removeLast(recentIds.count - Self.recentLimit) }
+        perform { try repo.setRecentIDs(recentIds) }
     }
 
     func reload() {
@@ -78,6 +97,11 @@ final class AppState {
     var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
     var isSearching: Bool { !trimmedQuery.isEmpty }
     var liveNotes: [Note] { notes.filter { !$0.isTrashed } }
+    var favoriteCount: Int { liveNotes.filter(\.favorite).count }
+    var recentNotes: [Note] {
+        let byId = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
+        return recentIds.compactMap { byId[$0] }.filter { !$0.isTrashed }
+    }
     var trashCount: Int { notes.count - liveNotes.count }
 
     var selectedNote: Note? { selectedId.flatMap { id in notes.first { $0.id == id } } }
@@ -94,6 +118,8 @@ final class AppState {
         if note.isTrashed { return false }
         switch nav {
         case let .notebook(id): return note.notebookId == id
+        case .favorites: return note.favorite
+        case .recents: return recentIds.contains(note.id)
         default: return true
         }
     }
@@ -101,7 +127,7 @@ final class AppState {
     /// Notas de la columna central según la navegación y la búsqueda.
     var list: [Note] {
         let q = trimmedQuery
-        guard !q.isEmpty else { return notes.filter { matches($0, nav) } }
+        guard !q.isEmpty else { return nav == .recents ? recentNotes : notes.filter { matches($0, nav) } }
         let base = scope == .all ? liveNotes : notes.filter { matches($0, nav) }
         let found = base.filter { n in
             searchMatches.contains(n.id) || notebookName(n.notebookId).localizedStandardContains(q)
@@ -115,6 +141,8 @@ final class AppState {
     func navLabel(_ nav: Nav) -> String {
         switch nav {
         case .all: return "Todas las notas"
+        case .favorites: return "Favoritas"
+        case .recents: return "Recientes"
         case let .notebook(id): return notebookName(id)
         case .trash: return "Papelera"
         }
@@ -134,7 +162,10 @@ final class AppState {
         self.nav = nav
         query = ""
         multiSelection = []
+        // Cambiar de vista autoselecciona la primera nota: no cuenta como vista.
+        skipRecent = true
         selectedId = list.first?.id
+        skipRecent = false
     }
 
     func select(note id: String) {
@@ -233,6 +264,14 @@ final class AppState {
     func trash(_ id: String) {
         let next = selectionAfterRemoving(id)
         update(id) { $0.trashedAt = .now }
+        selectedId = next
+    }
+
+    func toggleFavorite(_ id: String) {
+        guard let note = notes.first(where: { $0.id == id }), !note.isTrashed else { return }
+        // En la vista Favoritas, quitar la marca saca la nota de la lista: selecciona otra.
+        let next = nav == .favorites && note.favorite ? selectionAfterRemoving(id) : id
+        update(id) { $0.favorite.toggle() }
         selectedId = next
     }
 
