@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // No hay ruta de login: sin sesión se responde 401 en vez de intentar redirigir (500).
+        $middleware->redirectGuestsTo(fn () => null);
+
         // Los bloques guardan cadenas vacías (`html`, `t`); convertirlas en null rompe al cliente.
         $middleware->convertEmptyStringsToNull(except: [
             fn (Request $request) => $request->is('api/sync'),
