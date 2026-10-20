@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export3.dtd">
+<en-export export-date="20260901T100000Z" application="Evernote" version="10.0">
+  <note>
+    <title>Viaje a Asturias</title>
+    <created>20250815T093000Z</created>
+    <updated>20250820T181500Z</updated>
+    <tag>viaje</tag>
+    <tag>Pendiente</tag>
+    <content><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
+<en-note><div>Ruta del <b>Cares</b> en un día,&nbsp;salir desde Poncebos.</div><div>Ver <a href="https://example.com/cares?a=1&amp;b=2">mapa</a>.</div><div><br/></div><h2>Equipaje</h2><div><en-todo checked="true"/>Botas</div><div><en-todo checked="false"/>Chubasquero</div><div>Después del todo.</div><div style="box-sizing: border-box; -en-codeblock:true;"><div>ssh nas.local</div><div>&nbsp;&nbsp;ls -la</div></div><ul><li><div>uno</div></li><li><div>dos</div></li></ul><ul style="--en-todo:true;"><li style="--en-checked:true;"><div>Hecho v10</div></li><li style="--en-checked:false;"><div>Pendiente v10</div></li></ul><en-media type="image/png" hash="abc"/></en-note>]]></content>
+    <resource><data encoding="base64">iVBORw0KGgo=</data><mime>image/png</mime></resource>
+  </note>
+  <note>
+    <title>Vacía</title>
+    <created>20250101T000000Z</created>
+    <content><![CDATA[<en-note></en-note>]]></content>
+  </note>
+</en-export>
